@@ -1,0 +1,23 @@
+{
+  "projectName": "agri-app",
+  "mode": "file-router",
+  "typescript": true,
+  "packageManager": "pnpm",
+  "includeExamples": true,
+  "tailwind": true,
+  "addOnOptions": {},
+  "envVarValues": {},
+  "git": true,
+  "install": true,
+  "routerOnly": false,
+  "version": 1,
+  "framework": "react",
+  "chosenAddOns": [
+    "biome",
+    "railway",
+    "compiler",
+    "shadcn",
+    "t3env",
+    "tanstack-query"
+  ]
+}
