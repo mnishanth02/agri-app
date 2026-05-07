@@ -100,7 +100,7 @@ Depends on: 0.1.
 
 **Done when:** Postgres responds and `postgis_version()` returns a version string.
 
-### Module 0.3 — `packages/shared` skeleton
+### Module 0.3 — `packages/shared` skeleton ✅ (completed 2026-05-07)
 
 Depends on: 0.1.
 
