@@ -58,7 +58,7 @@ These are blocking for later phases but require external lead time. Kick them of
 
 **Phase entry:** Pre-flight P.3 (Clerk keys) must be ready before Module 0.7.
 
-### Module 0.1 — Workspace skeleton
+### Module 0.1 — Workspace skeleton ✅ (completed 2026-05-07)
 
 Depends on: nothing.
 
@@ -91,7 +91,7 @@ Depends on: nothing.
 
 Depends on: 0.1.
 
-1. Create `docker-compose.yml` at repo root with one service `db` using `postgis/postgis:17-3.5`.
+1. Create `docker-compose.yml` at repo root with one service `db` using `postgis/postgis:17-master`.
 2. Set env: `POSTGRES_USER=viz`, `POSTGRES_PASSWORD=viz`, `POSTGRES_DB=viz_crop`.
 3. Map port `5432:5432`; add named volume `viz_pgdata`.
 4. Add a `healthcheck` using `pg_isready -U viz`.
@@ -877,6 +877,14 @@ Depends on: 8.1, 8.2.
 - All checklist items in plan.md §16 pass.
 - `pnpm ci` (Biome), `pnpm test`, and `pnpm build` are green.
 - README is sufficient for cold-start.
+
+---
+
+## Pending Items
+
+| Module | Item | Blocked until | Notes |
+|--------|------|---------------|-------|
+| — | — | — | No pending items yet |
 
 ---
 
