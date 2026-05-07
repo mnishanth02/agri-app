@@ -112,7 +112,7 @@ Depends on: 0.1.
 
 **Done when:** `pnpm --filter @viz-crop/shared build` compiles successfully against empty stubs.
 
-### Module 0.4 — `apps/api` skeleton
+### Module 0.4 — `apps/api` skeleton ✅ (completed 2026-05-07)
 
 Depends on: 0.1, 0.3 (workspace link).
 
