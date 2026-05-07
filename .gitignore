@@ -1,0 +1,26 @@
+node_modules
+dist
+build
+coverage
+.turbo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea
+*.swp
+
+# generated
+**/routeTree.gen.ts

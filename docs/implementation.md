@@ -65,13 +65,27 @@ Depends on: nothing.
 1. `pnpm init` at repo root; set `"name": "viz-crop"`, `"private": true`.
 2. Create `pnpm-workspace.yaml` listing `apps/*` and `packages/*`.
 3. Add root `tsconfig.base.json` with strict TS settings; per-app `tsconfig.json` extends it.
-4. Add root `package.json` scripts: `dev`, `build`, `lint`, `format`, `test`, `typecheck` — each delegating to `pnpm -r run <name>`.
-5. Add `.gitignore` (node_modules, dist, .env, .turbo, coverage, .DS_Store).
-6. Add `.editorconfig`, `.prettierrc`, `.prettierignore`.
-7. Add root `eslint.config.js` (flat config) shared across packages.
-8. Commit.
+4. Install Biome at the repo root as a pinned dev dependency: `pnpm add -D -E -w @biomejs/biome`. Biome owns **both** formatting and linting (and import organization) for the whole monorepo — there is no ESLint or Prettier in this project. Pinning (`-E`) is required: Biome's config schema is version-specific and unpinned upgrades can break CI silently.
+5. Run `pnpm exec biome init` at the repo root to generate `biome.json`. Edit it to:
+   - `"$schema": "https://biomejs.dev/schemas/<version>/schema.json"` (match the installed version).
+   - Enable `formatter`, `linter`, and `assist` (organize-imports lives under `assist` in Biome v2).
+   - Set `"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true }` so Biome respects `.gitignore` across the workspace.
+   - Configure `files.includes` to scope Biome to `apps/**` and `packages/**` and exclude `**/dist`, `**/coverage`, `**/.turbo`, `**/db/migrations/**`.
+   - Pick formatter defaults once for the whole repo (2-space indent, single quotes for JS, trailing commas `all`, line width 100 — adjust to taste, but record the choice here so per-package overrides stay rare).
+   - Enable the `recommended` linter rule set and the `style` + `correctness` groups; tune individual rules later as the codebase grows.
+6. Add root `package.json` scripts:
+   - `dev`, `build`, `test`, `typecheck` — each delegating to `pnpm -r run <name>`.
+   - `format`: `biome format --write .`
+   - `lint`: `biome lint .`
+   - `check`: `biome check --write .` (formats, lints, and applies safe assist actions in one pass — the preferred local command).
+   - `ci`: `biome ci .` (read-only, optimized for CI; fails on any diagnostic).
+7. Add `.gitignore` (node_modules, dist, .env, .turbo, coverage, .DS_Store).
+8. Add `.editorconfig`. Set `"formatter": { "useEditorconfig": true }` in `biome.json` if you want Biome to inherit `indent_style` / `indent_size` / `end_of_line` from it.
+9. Add `.vscode/extensions.json` recommending `biomejs.biome`, and `.vscode/settings.json` with `"editor.defaultFormatter": "biomejs.biome"` plus `"editor.codeActionsOnSave": { "source.fixAll.biome": "explicit", "source.organizeImports.biome": "explicit" }` so editor-on-save behavior matches `pnpm ci`.
+10. **Do not** add ESLint, Prettier, or their configs/plugins anywhere in the workspace. If a package ever needs a tweak, create a nested `biome.json` that extends the root via `"extends": "//"`.
+11. Commit.
 
-**Done when:** `pnpm install` succeeds at root; `pnpm -r run typecheck` runs (even if no packages yet exist).
+**Done when:** `pnpm install` succeeds at root; `pnpm -r run typecheck` runs (even if no packages yet exist); `pnpm check` runs cleanly against the empty workspace; opening a `.ts` file in VS Code formats with Biome on save.
 
 ### Module 0.2 — Local Postgres + PostGIS
 
@@ -182,7 +196,7 @@ Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 
 - `pnpm install && docker compose up -d && pnpm dev` boots both apps and the DB.
 - `pnpm -r run build` succeeds.
-- `pnpm -r run typecheck` and `pnpm lint` are clean.
+- `pnpm -r run typecheck` and `pnpm ci` (Biome) are clean.
 - Sign-in redirect works.
 
 Commit and tag this state as `phase-0-complete` (optional but useful for rollback).
@@ -861,7 +875,7 @@ Depends on: 8.1, 8.2.
 ### Phase 8 exit criteria — also the project exit criteria
 
 - All checklist items in plan.md §16 pass.
-- `pnpm lint`, `pnpm test`, and `pnpm build` are green.
+- `pnpm ci` (Biome), `pnpm test`, and `pnpm build` are green.
 - README is sufficient for cold-start.
 
 ---
