@@ -87,7 +87,7 @@ Depends on: nothing.
 
 **Done when:** `pnpm install` succeeds at root; `pnpm -r run typecheck` runs (even if no packages yet exist); `pnpm check` runs cleanly against the empty workspace; opening a `.ts` file in VS Code formats with Biome on save.
 
-### Module 0.2 — Local Postgres + PostGIS
+### Module 0.2 — Local Postgres + PostGIS ✅ (completed 2026-05-07)
 
 Depends on: 0.1.
 

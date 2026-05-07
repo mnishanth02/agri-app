@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgis/postgis:17-master
+    container_name: viz-crop-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: viz
+      POSTGRES_PASSWORD: viz
+      POSTGRES_DB: viz_crop
+    ports:
+      - "5432:5432"
+    volumes:
+      - viz_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viz -d viz_crop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  viz_pgdata:
