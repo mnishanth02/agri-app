@@ -17,7 +17,7 @@ function Dashboard() {
   });
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4">
+    <main className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center gap-4">
       <h1 className="text-3xl font-semibold">Dashboard placeholder</h1>
       <section className="rounded-md border border-border bg-card px-4 py-3 text-sm">
         {isLoading ? 'Checking API…' : null}

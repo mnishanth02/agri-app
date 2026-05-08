@@ -60,7 +60,18 @@ function InnerApp() {
 
 createRoot(rootEl).render(
   <StrictMode>
-    <ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}
+      afterSignOutUrl="/sign-in"
+      // Route Clerk's internal navigations (post sign-out, OAuth callback,
+      // user-profile links, etc.) through TanStack Router instead of letting
+      // Clerk fall back to `window.location.href`. Without these, sign-out
+      // triggers a hard page reload which causes a brief <ClerkLoading>
+      // "Loading…" flash and a perceived double redirect to /sign-in.
+      // Both `routerPush` and `routerReplace` must be provided together.
+      routerPush={(to) => router.history.push(to)}
+      routerReplace={(to) => router.history.replace(to)}
+    >
       <QueryClientProvider client={queryClient}>
         <ClerkLoading>
           <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
