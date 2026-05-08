@@ -143,7 +143,7 @@ Depends on: 0.1, 0.3.
 
 **Done when:** `pnpm --filter @viz-crop/web dev` serves the placeholder at `http://localhost:5173`.
 
-### Module 0.6 — TanStack Router (file-based)
+### Module 0.6 — TanStack Router (file-based) ✅ (completed 2026-05-08)
 
 Depends on: 0.5.
 
@@ -151,6 +151,8 @@ Depends on: 0.5.
 2. Configure `vite.config.ts` with the Router plugin (file-based routes from `src/routes`).
 3. Create `src/routes/__root.tsx` with `<Outlet />` and the `<TanStackRouterDevtools />` (dev only).
 4. Create `src/routes/index.tsx` rendering "Dashboard placeholder".
+
+> ⚠️ PENDING: `routes/index.tsx` was intentionally **not** created — the file would conflict with `routes/_auth/index.tsx` (both pathless-layout `_auth` index and the root index match `/`). The "Dashboard placeholder" lives at `routes/_auth/index.tsx` instead, which becomes the gated dashboard once Module 0.8 wires the Clerk redirect in `_auth/route.tsx`. Delete this note when Module 0.8 lands.
 5. Create `src/routes/sign-in.tsx` rendering "Sign-in placeholder".
 6. Create `src/routes/_auth/route.tsx` (gated layout placeholder; auth check added in 0.8).
 7. Create `src/routes/_auth/index.tsx` and `src/routes/_auth/fields.new.tsx` and `src/routes/_auth/fields.$id.tsx` as placeholders.
@@ -158,7 +160,7 @@ Depends on: 0.5.
 
 **Done when:** Navigating between `/`, `/sign-in`, `/fields/new`, `/fields/abc` works without 404; router devtools panel is reachable.
 
-### Module 0.7 — TanStack Query
+### Module 0.7 — TanStack Query ✅ (completed 2026-05-08)
 
 Depends on: 0.5.
 
@@ -884,7 +886,7 @@ Depends on: 8.1, 8.2.
 
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
-| — | — | — | No pending items yet |
+| 0.6 | `routes/index.tsx` not created (spec step 4) | Module 0.8 | Dashboard placeholder lives at `routes/_auth/index.tsx` instead — adding `routes/index.tsx` would conflict with the pathless-layout `_auth` index for `/`. Reconcile when Clerk redirect lands in `_auth/route.tsx`. |
 
 ---
 

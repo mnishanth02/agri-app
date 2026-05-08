@@ -6,12 +6,15 @@
   "description": "React + Vite + Tailwind v4 web client for viz-crop.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "routes:generate": "tsr generate",
+    "build": "tsr generate && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsr generate && tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@tanstack/react-query": "5.100.9",
+    "@tanstack/react-router": "1.169.2",
     "@turf/turf": "^7.3.5",
     "@viz-crop/shared": "workspace:*",
     "class-variance-authority": "^0.7.1",
@@ -28,6 +31,10 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.4",
+    "@tanstack/react-query-devtools": "5.100.9",
+    "@tanstack/react-router-devtools": "1.166.13",
+    "@tanstack/router-cli": "1.166.4",
+    "@tanstack/router-plugin": "1.167.35",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
