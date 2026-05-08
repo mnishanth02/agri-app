@@ -248,7 +248,7 @@ Depends on: 1.1, 0.2.
 
 **Done when:** `\d fields` shows the generated `area_hectares` column and the GIST index; `INSERT` of a hand-crafted polygon via psql succeeds and `area_hectares` is non-null.
 
-### Module 1.3 — Geometry helpers (server-side)
+### Module 1.3 — Geometry helpers (server-side) ✅ (completed 2026-05-08)
 
 Depends on: 1.1.
 
@@ -259,7 +259,7 @@ Depends on: 1.1.
 
 **Done when:** Insert + select round-trips a small polygon and gets back the same coordinates within float tolerance.
 
-### Module 1.4 — Shared zod schemas (fields + geometry)
+### Module 1.4 — Shared zod schemas (fields + geometry) ✅ (completed 2026-05-08)
 
 Depends on: 0.3.
 
