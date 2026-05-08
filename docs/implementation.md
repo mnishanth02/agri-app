@@ -152,7 +152,7 @@ Depends on: 0.5.
 3. Create `src/routes/__root.tsx` with `<Outlet />` and the `<TanStackRouterDevtools />` (dev only).
 4. Create `src/routes/index.tsx` rendering "Dashboard placeholder".
 
-> ⚠️ PENDING: `routes/index.tsx` was intentionally **not** created — the file would conflict with `routes/_auth/index.tsx` (both pathless-layout `_auth` index and the root index match `/`). The "Dashboard placeholder" lives at `routes/_auth/index.tsx` instead, which becomes the gated dashboard once Module 0.8 wires the Clerk redirect in `_auth/route.tsx`. Delete this note when Module 0.8 lands.
+> ⚠️ PENDING (resolved in Module 0.8): `routes/index.tsx` was intentionally **not** created — the file would conflict with `routes/_auth/index.tsx` (both pathless-layout `_auth` index and the root index match `/`). The "Dashboard placeholder" lives at `routes/_auth/index.tsx`, which Module 0.8 turned into the gated dashboard via the Clerk redirect in `_auth/route.tsx`. No further action required.
 5. Create `src/routes/sign-in.tsx` rendering "Sign-in placeholder".
 6. Create `src/routes/_auth/route.tsx` (gated layout placeholder; auth check added in 0.8).
 7. Create `src/routes/_auth/index.tsx` and `src/routes/_auth/fields.new.tsx` and `src/routes/_auth/fields.$id.tsx` as placeholders.
@@ -174,11 +174,11 @@ Depends on: 0.5.
 
 **Done when:** A trivial test query (e.g., `useQuery(['health'], () => apiFetch('/api/health'))`) renders `ok: true` on the placeholder dashboard.
 
-### Module 0.8 — Clerk auth (web + API)
+### Module 0.8 — Clerk auth (web + API) ✅ (completed 2026-05-08)
 
 Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 
-1. **Web:** install `@clerk/clerk-react`. Wrap `__root.tsx` in `<ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>`.
+1. **Web:** install `@clerk/react` (Clerk Core 3 — replaces the deprecated `@clerk/clerk-react`). Wrap `__root.tsx` in `<ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>`.
 2. Replace `routes/sign-in.tsx` with Clerk's `<SignIn />` component centered card.
 3. In `routes/_auth/route.tsx`, use `useAuth()` to redirect to `/sign-in` when not signed in.
 4. Update `lib/api.ts` to read the active session token via Clerk's `getToken()` and send `Authorization: Bearer <jwt>` on every `apiFetch` call.
@@ -188,13 +188,19 @@ Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 8. Add a temporary probe route `GET /api/_auth-check` (protected by `requireUser`, returns `{ userId: auth.userId }`) so the auth wall can be exercised before any business routes exist. Mark it with a `// TODO Phase 1: remove once /api/fields exists` comment.
 9. Make `CLERK_SECRET_KEY` required in `apps/api/src/env.ts`.
 
+> ⚠️ PENDING: The auth-check probe `GET /api/_auth-check` is a temporary route added in Module 0.8 step 8. It must be deleted in **Module 1.6** once `/api/fields` exists and exercises the auth wall through real business routes. The route file is `apps/api/src/routes/auth-check.ts` and its registration in `apps/api/src/server.ts`.
+
+> 📝 NOTE: `clerkPlugin()` is registered globally so `getAuth(request)` works in any handler, but **no route is auto-protected** — routes opt in via `{ preHandler: requireUser }`. This is the inverse of "default-deny" and must be reconsidered in Module 1.6 when business routes land. Audit each new `/api/*` route for the `requireUser` preHandler.
+
+> 📝 NOTE: The web side gates the `<RouterProvider>` mount with `<ClerkLoaded>` so `_auth/route.tsx` `beforeLoad` can safely assume `auth.isLoaded` is `true`. `<InnerApp>` calls `router.invalidate()` whenever `auth.isSignedIn`/`auth.isLoaded` change so sign-out triggers the `_auth` redirect on the next navigation tick.
+
 **Done when:**
 - Visiting `/` while signed-out redirects to `/sign-in`.
 - After Clerk sign-in, lands on `/` with the placeholder dashboard.
 - `curl http://localhost:8080/api/health` still returns 200.
 - `curl http://localhost:8080/api/_auth-check` returns 401 without a bearer token and 200 with a valid Clerk JWT.
 
-### Phase 0 exit criteria
+### Phase 0 exit criteria ✅ (completed 2026-05-08)
 
 - `pnpm install && docker compose up -d && pnpm dev` boots both apps and the DB.
 - `pnpm -r run build` succeeds.
@@ -886,7 +892,7 @@ Depends on: 8.1, 8.2.
 
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
-| 0.6 | `routes/index.tsx` not created (spec step 4) | Module 0.8 | Dashboard placeholder lives at `routes/_auth/index.tsx` instead — adding `routes/index.tsx` would conflict with the pathless-layout `_auth` index for `/`. Reconcile when Clerk redirect lands in `_auth/route.tsx`. |
+| 0.8 | Remove temporary `GET /api/_auth-check` probe route | Module 1.6 | `apps/api/src/routes/auth-check.ts` and its registration in `server.ts`. Added to exercise the auth wall before any business routes exist. Delete once `/api/fields` (Module 1.6) covers the same surface. |
 
 ---
 

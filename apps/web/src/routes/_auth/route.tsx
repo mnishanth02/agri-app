@@ -1,10 +1,17 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_auth')({
+  beforeLoad: ({ context, location }) => {
+    if (!context.auth.isSignedIn) {
+      throw redirect({
+        to: '/sign-in',
+        search: { redirect: location.href },
+      });
+    }
+  },
   component: AuthLayout,
 });
 
 function AuthLayout() {
-  // TODO Module 0.8: gate with Clerk `useAuth()` and redirect to `/sign-in` when signed out.
   return <Outlet />;
 }

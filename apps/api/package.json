@@ -12,6 +12,7 @@
     "clean": "tsc -b --clean"
   },
   "dependencies": {
+    "@clerk/fastify": "3.1.24",
     "@fastify/cors": "^11.1.0",
     "@fastify/sensible": "^6.0.3",
     "@viz-crop/shared": "workspace:*",

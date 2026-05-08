@@ -147,7 +147,7 @@ NDVI should sit below the first symbol/label layer so labels remain readable, an
 | `zod` | Runtime validation (from `packages/shared`) |
 | `react-hook-form`, `@hookform/resolvers` | shadcn Form + zod resolver |
 | `sonner` | Toasts |
-| `@clerk/clerk-react` | Auth UI + JWT in browser |
+| `@clerk/react` | Auth UI + JWT in browser (Core 3; replaces deprecated `@clerk/clerk-react`) |
 | shadcn primitives | Button, Form, Dialog, Sheet, Tabs, Tooltip, Select, Slider |
 
 ### Backend dependencies
