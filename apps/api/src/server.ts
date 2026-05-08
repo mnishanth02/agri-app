@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 
 import { env } from './env.js';
 import { registerCors } from './plugins/cors.js';
+import { dbPlugin } from './plugins/db.js';
 import { authCheckRoutes } from './routes/auth-check.js';
 import { healthRoutes } from './routes/health.js';
 
@@ -27,6 +28,10 @@ export async function buildServer() {
 
   await app.register(sensible);
   await registerCors(app);
+
+  // Database first — routes registered later (including the auth-protected ones)
+  // can rely on `app.db` for queries. The plugin closes the pg pool on app.close.
+  await app.register(dbPlugin);
 
   // Register Clerk auth plugin globally so `getAuth(request)` works in any route.
   // The plugin attaches a request.auth object with isAuthenticated/userId/sessionId

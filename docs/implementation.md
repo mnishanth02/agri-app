@@ -217,7 +217,7 @@ Commit and tag this state as `phase-0-complete` (optional but useful for rollbac
 
 **Phase entry:** Phase 0 complete.
 
-### Module 1.1 — Drizzle setup
+### Module 1.1 — Drizzle setup ✅ (completed 2026-05-08)
 
 Depends on: 0.4.
 

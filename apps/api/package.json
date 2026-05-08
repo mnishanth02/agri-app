@@ -9,19 +9,27 @@
     "start": "node --env-file-if-exists=.env dist/main.js",
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "clean": "tsc -b --clean"
+    "clean": "tsc -b --clean",
+    "db:generate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio": "node --env-file-if-exists=.env ./node_modules/drizzle-kit/bin.cjs studio"
   },
   "dependencies": {
     "@clerk/fastify": "3.1.24",
     "@fastify/cors": "^11.1.0",
     "@fastify/sensible": "^6.0.3",
     "@viz-crop/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.7.0",
+    "fastify-plugin": "^5.1.0",
+    "pg": "^8.20.0",
     "pino-pretty": "^13.1.1",
     "zod": "^4.1.13"
   },
   "devDependencies": {
     "@types/node": "^22.10.10",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }
