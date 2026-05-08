@@ -229,7 +229,7 @@ Depends on: 0.4.
 
 **Done when:** `app.db.execute(sql\`select 1 as ok\`)` returns `[{ ok: 1 }]` from a quick sanity script.
 
-### Module 1.2 — Schema + initial migration
+### Module 1.2 — Schema + initial migration ✅ (completed 2026-05-08)
 
 Depends on: 1.1, 0.2.
 
