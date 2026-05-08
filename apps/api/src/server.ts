@@ -34,7 +34,6 @@ export async function buildServer() {
   // protection via `requireUser` preHandler — no route is auto-gated.
   await app.register(clerkPlugin, {
     secretKey: env.CLERK_SECRET_KEY,
-    publishableKey: env.CLERK_PUBLISHABLE_KEY,
   });
 
   await app.register(healthRoutes, { prefix: '/api' });

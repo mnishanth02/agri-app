@@ -81,7 +81,7 @@ Depends on: nothing.
    - `ci`: `biome ci .` (read-only, optimized for CI; fails on any diagnostic).
 7. Add `.gitignore` (node_modules, dist, .env, .turbo, coverage, .DS_Store).
 8. Add `.editorconfig`. Set `"formatter": { "useEditorconfig": true }` in `biome.json` if you want Biome to inherit `indent_style` / `indent_size` / `end_of_line` from it.
-9. Add `.vscode/extensions.json` recommending `biomejs.biome`, and `.vscode/settings.json` with `"editor.defaultFormatter": "biomejs.biome"` plus `"editor.codeActionsOnSave": { "source.fixAll.biome": "explicit", "source.organizeImports.biome": "explicit" }` so editor-on-save behavior matches `pnpm ci`.
+9. Add `.vscode/extensions.json` recommending `biomejs.biome`, and `.vscode/settings.json` with `"editor.defaultFormatter": "biomejs.biome"` plus `"editor.codeActionsOnSave": { "source.fixAll.biome": "explicit", "source.organizeImports.biome": "explicit" }` so editor-on-save behavior matches `pnpm run ci`.
 10. **Do not** add ESLint, Prettier, or their configs/plugins anywhere in the workspace. If a package ever needs a tweak, create a nested `biome.json` that extends the root via `"extends": "//"`.
 11. Commit.
 
@@ -204,7 +204,7 @@ Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 
 - `pnpm install && docker compose up -d && pnpm dev` boots both apps and the DB.
 - `pnpm -r run build` succeeds.
-- `pnpm -r run typecheck` and `pnpm ci` (Biome) are clean.
+- `pnpm -r run typecheck` and `pnpm run ci` (Biome) are clean. (Note: `pnpm ci` without `run` is reserved by pnpm and errors with `ERR_PNPM_CI_NOT_IMPLEMENTED` — always use `pnpm run ci` to invoke the Biome CI script.)
 - Sign-in redirect works.
 
 Commit and tag this state as `phase-0-complete` (optional but useful for rollback).
@@ -883,7 +883,7 @@ Depends on: 8.1, 8.2.
 ### Phase 8 exit criteria — also the project exit criteria
 
 - All checklist items in plan.md §16 pass.
-- `pnpm ci` (Biome), `pnpm test`, and `pnpm build` are green.
+- `pnpm run ci` (Biome), `pnpm test`, and `pnpm build` are green.
 - README is sufficient for cold-start.
 
 ---

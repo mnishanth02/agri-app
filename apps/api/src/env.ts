@@ -32,10 +32,6 @@ const envSchema = z.object({
     .string()
     .min(1, 'CLERK_SECRET_KEY is required (Module 0.8)')
     .regex(/^sk_(test|live)_/, 'CLERK_SECRET_KEY must start with sk_test_ or sk_live_'),
-  CLERK_PUBLISHABLE_KEY: z
-    .string()
-    .min(1, 'CLERK_PUBLISHABLE_KEY is required (Module 0.8)')
-    .regex(/^pk_(test|live)_/, 'CLERK_PUBLISHABLE_KEY must start with pk_test_ or pk_live_'),
 });
 
 export type Env = z.infer<typeof envSchema>;
