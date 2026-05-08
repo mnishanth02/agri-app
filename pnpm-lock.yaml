@@ -160,6 +160,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@turf/area':
+        specifier: ^7.3.5
+        version: 7.3.5
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -167,6 +170,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@types/node@22.19.17)(vite@8.0.11(@types/node@22.19.17)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0))
 
 packages:
 

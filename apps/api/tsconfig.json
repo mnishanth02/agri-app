@@ -14,5 +14,6 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"],
   "references": [{ "path": "../../packages/shared" }]
 }

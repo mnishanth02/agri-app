@@ -277,7 +277,7 @@ Depends on: 0.3.
 
 **Done when:** `pnpm --filter @viz-crop/shared build` succeeds and `apps/web` + `apps/api` can both import the schemas.
 
-### Module 1.5 — Geometry area + bounds validation tests
+### Module 1.5 — Geometry area + bounds validation tests ✅ (completed 2026-05-08)
 
 Depends on: 1.4.
 
@@ -893,6 +893,7 @@ Depends on: 8.1, 8.2.
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
 | 0.8 | Remove temporary `GET /api/_auth-check` probe route | Module 1.6 | `apps/api/src/routes/auth-check.ts` and its registration in `server.ts`. Added to exercise the auth wall before any business routes exist. Delete once `/api/fields` (Module 1.6) covers the same surface. |
+| 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to `polygonGeoJsonSchema` | Phase 3 (drawing tool) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. A client-side guard would give the user instant feedback while drawing instead of a 400 from the API. Likely uses `@turf/boolean-valid` or a small in-house segment-intersection check. |
 
 ---
 
