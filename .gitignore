@@ -8,6 +8,8 @@ coverage
 .env
 .env.local
 .env.*.local
+.env.bak
+.env*.bak
 
 # logs
 *.log

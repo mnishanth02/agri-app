@@ -128,7 +128,7 @@ Depends on: 0.1, 0.3 (workspace link).
 
 **Done when:** `pnpm --filter @viz-crop/api dev` boots; `curl http://localhost:8080/api/health` returns `{"ok":true}`.
 
-### Module 0.5 — `apps/web` skeleton
+### Module 0.5 — `apps/web` skeleton ✅ (completed 2026-05-08)
 
 Depends on: 0.1, 0.3.
 
