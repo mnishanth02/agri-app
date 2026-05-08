@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Fastify HTTP API for viz-crop.",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
-    "start": "node --env-file-if-exists=.env dist/server.js",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "node --env-file-if-exists=.env dist/main.js",
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "clean": "tsc -b --clean"
