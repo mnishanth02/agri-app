@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "incremental": false,
+    "tsBuildInfoFile": null,
+    // Override the production tsconfig's `rootDir: "src"` so the
+    // `test/**/*` files (Module 1.9 onward) live inside rootDir and
+    // don't trigger TS6059.
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": []
+}

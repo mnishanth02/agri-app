@@ -9,7 +9,11 @@ const optionalString = z.preprocess((value) => {
 const schema = z.object({
   VITE_API_BASE_URL: z.string().trim().url(),
   VITE_ESRI_API_KEY: optionalString,
-  VITE_CLERK_PUBLISHABLE_KEY: optionalString,
+  VITE_CLERK_PUBLISHABLE_KEY: z
+    .string()
+    .trim()
+    .min(1, 'VITE_CLERK_PUBLISHABLE_KEY is required (Module 0.8)')
+    .regex(/^pk_(test|live)_/, 'VITE_CLERK_PUBLISHABLE_KEY must start with pk_test_ or pk_live_'),
 });
 
 export type WebEnv = z.infer<typeof schema>;

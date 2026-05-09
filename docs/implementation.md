@@ -44,7 +44,7 @@ These are blocking for later phases but require external lead time. Kick them of
 
 | # | Task | Blocks | Where it lands |
 |---|---|---|---|
-| P.1 | Sign up at [developers.arcgis.com](https://developers.arcgis.com); create API key scoped to **Basemaps**; restrict to `localhost` + prod domain. | Phase 2 | `VITE_ESRI_API_KEY` |
+| P.1 | Sign up at [developers.arcgis.com](https://developers.arcgis.com); create API key scoped to **Basemaps**; restrict to `localhost` + prod domain. This key becomes required once Phase 2 ships. | Phase 2 | `VITE_ESRI_API_KEY` |
 | P.2 | Sign up at [api-connect.eos.com](https://api-connect.eos.com/user-dashboard/); email `api.support@eosda.com` to activate the trial. | Phase 4 | `EOSDA_API_KEY` |
 | P.3 | Sign up at [clerk.com](https://clerk.com); create application; configure `http://localhost:5173` redirect; copy publishable + secret keys. | Phase 0.8 | `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` |
 
@@ -81,7 +81,7 @@ Depends on: nothing.
    - `ci`: `biome ci .` (read-only, optimized for CI; fails on any diagnostic).
 7. Add `.gitignore` (node_modules, dist, .env, .turbo, coverage, .DS_Store).
 8. Add `.editorconfig`. Set `"formatter": { "useEditorconfig": true }` in `biome.json` if you want Biome to inherit `indent_style` / `indent_size` / `end_of_line` from it.
-9. Add `.vscode/extensions.json` recommending `biomejs.biome`, and `.vscode/settings.json` with `"editor.defaultFormatter": "biomejs.biome"` plus `"editor.codeActionsOnSave": { "source.fixAll.biome": "explicit", "source.organizeImports.biome": "explicit" }` so editor-on-save behavior matches `pnpm ci`.
+9. Add `.vscode/extensions.json` recommending `biomejs.biome`, and `.vscode/settings.json` with `"editor.defaultFormatter": "biomejs.biome"` plus `"editor.codeActionsOnSave": { "source.fixAll.biome": "explicit", "source.organizeImports.biome": "explicit" }` so editor-on-save behavior matches `pnpm run ci`.
 10. **Do not** add ESLint, Prettier, or their configs/plugins anywhere in the workspace. If a package ever needs a tweak, create a nested `biome.json` that extends the root via `"extends": "//"`.
 11. Commit.
 
@@ -152,7 +152,7 @@ Depends on: 0.5.
 3. Create `src/routes/__root.tsx` with `<Outlet />` and the `<TanStackRouterDevtools />` (dev only).
 4. Create `src/routes/index.tsx` rendering "Dashboard placeholder".
 
-> ⚠️ PENDING: `routes/index.tsx` was intentionally **not** created — the file would conflict with `routes/_auth/index.tsx` (both pathless-layout `_auth` index and the root index match `/`). The "Dashboard placeholder" lives at `routes/_auth/index.tsx` instead, which becomes the gated dashboard once Module 0.8 wires the Clerk redirect in `_auth/route.tsx`. Delete this note when Module 0.8 lands.
+> ⚠️ PENDING (resolved in Module 0.8): `routes/index.tsx` was intentionally **not** created — the file would conflict with `routes/_auth/index.tsx` (both pathless-layout `_auth` index and the root index match `/`). The "Dashboard placeholder" lives at `routes/_auth/index.tsx`, which Module 0.8 turned into the gated dashboard via the Clerk redirect in `_auth/route.tsx`. No further action required.
 5. Create `src/routes/sign-in.tsx` rendering "Sign-in placeholder".
 6. Create `src/routes/_auth/route.tsx` (gated layout placeholder; auth check added in 0.8).
 7. Create `src/routes/_auth/index.tsx` and `src/routes/_auth/fields.new.tsx` and `src/routes/_auth/fields.$id.tsx` as placeholders.
@@ -174,11 +174,11 @@ Depends on: 0.5.
 
 **Done when:** A trivial test query (e.g., `useQuery(['health'], () => apiFetch('/api/health'))`) renders `ok: true` on the placeholder dashboard.
 
-### Module 0.8 — Clerk auth (web + API)
+### Module 0.8 — Clerk auth (web + API) ✅ (completed 2026-05-08)
 
 Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 
-1. **Web:** install `@clerk/clerk-react`. Wrap `__root.tsx` in `<ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>`.
+1. **Web:** install `@clerk/react` (Clerk Core 3 — replaces the deprecated `@clerk/clerk-react`). Wrap `__root.tsx` in `<ClerkProvider publishableKey={env.VITE_CLERK_PUBLISHABLE_KEY}>`.
 2. Replace `routes/sign-in.tsx` with Clerk's `<SignIn />` component centered card.
 3. In `routes/_auth/route.tsx`, use `useAuth()` to redirect to `/sign-in` when not signed in.
 4. Update `lib/api.ts` to read the active session token via Clerk's `getToken()` and send `Authorization: Bearer <jwt>` on every `apiFetch` call.
@@ -188,17 +188,23 @@ Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 8. Add a temporary probe route `GET /api/_auth-check` (protected by `requireUser`, returns `{ userId: auth.userId }`) so the auth wall can be exercised before any business routes exist. Mark it with a `// TODO Phase 1: remove once /api/fields exists` comment.
 9. Make `CLERK_SECRET_KEY` required in `apps/api/src/env.ts`.
 
+> ⚠️ PENDING: The auth-check probe `GET /api/_auth-check` is a temporary route added in Module 0.8 step 8. It must be deleted in **Module 1.6** once `/api/fields` exists and exercises the auth wall through real business routes. The route file is `apps/api/src/routes/auth-check.ts` and its registration in `apps/api/src/server.ts`.
+
+> 📝 NOTE: `clerkPlugin()` is registered globally so `getAuth(request)` works in any handler, but **no route is auto-protected** — routes opt in via `{ preHandler: requireUser }`. This is the inverse of "default-deny" and must be reconsidered in Module 1.6 when business routes land. Audit each new `/api/*` route for the `requireUser` preHandler.
+
+> 📝 NOTE: The web side gates the `<RouterProvider>` mount with `<ClerkLoaded>` so `_auth/route.tsx` `beforeLoad` can safely assume `auth.isLoaded` is `true`. `<InnerApp>` calls `router.invalidate()` whenever `auth.isSignedIn`/`auth.isLoaded` change so sign-out triggers the `_auth` redirect on the next navigation tick.
+
 **Done when:**
 - Visiting `/` while signed-out redirects to `/sign-in`.
 - After Clerk sign-in, lands on `/` with the placeholder dashboard.
 - `curl http://localhost:8080/api/health` still returns 200.
 - `curl http://localhost:8080/api/_auth-check` returns 401 without a bearer token and 200 with a valid Clerk JWT.
 
-### Phase 0 exit criteria
+### Phase 0 exit criteria ✅ (completed 2026-05-08)
 
 - `pnpm install && docker compose up -d && pnpm dev` boots both apps and the DB.
 - `pnpm -r run build` succeeds.
-- `pnpm -r run typecheck` and `pnpm ci` (Biome) are clean.
+- `pnpm -r run typecheck` and `pnpm run ci` (Biome) are clean. (Note: `pnpm ci` without `run` is reserved by pnpm and errors with `ERR_PNPM_CI_NOT_IMPLEMENTED` — always use `pnpm run ci` to invoke the Biome CI script.)
 - Sign-in redirect works.
 
 Commit and tag this state as `phase-0-complete` (optional but useful for rollback).
@@ -211,7 +217,7 @@ Commit and tag this state as `phase-0-complete` (optional but useful for rollbac
 
 **Phase entry:** Phase 0 complete.
 
-### Module 1.1 — Drizzle setup
+### Module 1.1 — Drizzle setup ✅ (completed 2026-05-08)
 
 Depends on: 0.4.
 
@@ -223,7 +229,7 @@ Depends on: 0.4.
 
 **Done when:** `app.db.execute(sql\`select 1 as ok\`)` returns `[{ ok: 1 }]` from a quick sanity script.
 
-### Module 1.2 — Schema + initial migration
+### Module 1.2 — Schema + initial migration ✅ (completed 2026-05-08)
 
 Depends on: 1.1, 0.2.
 
@@ -242,7 +248,7 @@ Depends on: 1.1, 0.2.
 
 **Done when:** `\d fields` shows the generated `area_hectares` column and the GIST index; `INSERT` of a hand-crafted polygon via psql succeeds and `area_hectares` is non-null.
 
-### Module 1.3 — Geometry helpers (server-side)
+### Module 1.3 — Geometry helpers (server-side) ✅ (completed 2026-05-08)
 
 Depends on: 1.1.
 
@@ -253,7 +259,7 @@ Depends on: 1.1.
 
 **Done when:** Insert + select round-trips a small polygon and gets back the same coordinates within float tolerance.
 
-### Module 1.4 — Shared zod schemas (fields + geometry)
+### Module 1.4 — Shared zod schemas (fields + geometry) ✅ (completed 2026-05-08)
 
 Depends on: 0.3.
 
@@ -271,7 +277,7 @@ Depends on: 0.3.
 
 **Done when:** `pnpm --filter @viz-crop/shared build` succeeds and `apps/web` + `apps/api` can both import the schemas.
 
-### Module 1.5 — Geometry area + bounds validation tests
+### Module 1.5 — Geometry area + bounds validation tests ✅ (completed 2026-05-08)
 
 Depends on: 1.4.
 
@@ -286,7 +292,7 @@ Depends on: 1.4.
 
 **Done when:** `pnpm test` runs and the suite passes.
 
-### Module 1.6 — Field routes (CRUD)
+### Module 1.6 — Field routes (CRUD) ✅ (completed 2026-05-09)
 
 Depends on: 1.2, 1.3, 1.4, 0.8.
 
@@ -301,7 +307,7 @@ Depends on: 1.2, 1.3, 1.4, 0.8.
 
 **Done when:** A signed-in `curl` flow can POST → GET → PATCH → DELETE a field. A second user gets an empty list and 404 for the first user's IDs.
 
-### Module 1.7 — Web `useFields` hook
+### Module 1.7 — Web `useFields` hook ✅ (completed 2026-05-09)
 
 Depends on: 0.7, 0.8, 1.6.
 
@@ -314,7 +320,9 @@ Depends on: 0.7, 0.8, 1.6.
 
 **Done when:** A scratch component listing `useFieldList().data` renders the seeded user's fields.
 
-### Module 1.8 — Dashboard UI
+> ⚠️ PENDING: Live signed-in browser smoke deferred — Module 1.8 will rewrite `routes/_auth/index.tsx` with the real `EmptyState` / `FieldList` / `FieldCard` and naturally exercise this hook end-to-end. Hook compiles (typecheck ✅), bundles (vite build ✅), is reviewed clean by gpt-5.5, and the underlying API contract was already proven in Module 1.6's 24/24 signed-in smoke with real Clerk JWTs. (**Update 2026-05-09:** Module 1.8 has shipped and exercises this hook end-to-end via `useFieldList`, `useUpdateField`, and `useDeleteField`. Visual smoke entry now consolidated under Module 1.8.)
+
+### Module 1.8 — Dashboard UI ✅ (completed 2026-05-09)
 
 Depends on: 1.7, 0.5 (shadcn).
 
@@ -329,7 +337,11 @@ Depends on: 1.7, 0.5 (shadcn).
 - After creating a field via curl, refreshing the dashboard shows the card with the correct hectares.
 - Delete from the kebab menu removes the card after confirm.
 
-### Module 1.9 — Auth/ownership smoke tests for the API
+> ⚠️ PENDING: Live signed-in browser smoke deferred to user manual verification — automated Clerk OTP is out of scope. Implementation passes typecheck (3/3 ✅), `vite build` ✅, biome ✅, gpt-5.5 review (1 finding applied — see commit message), and both dev servers boot cleanly (API `/api/health` 200, `/api/fields` 401 unauth, web `/` 200). The Module 1.7 deferred-smoke entry is superseded by this one. (**Update:** Now covered by Playwright e2e smoke at `apps/web/e2e/dashboard.spec.ts` — 6 scenarios including sign-in, dashboard, placeholders, rename/delete dialog round-trip, sign-out, and secondary auth pages. Run with `pnpm --filter @viz-crop/web e2e` while `pnpm dev` is running.)
+
+> ⚠️ DEVIATION: Step 1 (`layouts/DashboardLayout.tsx`) was intentionally skipped — `apps/web/src/routes/_auth/route.tsx::AuthLayout` already provides the chrome + sign-out via `<UserButton>`. The page-level shell is inlined in the dashboard route. A separate file would be empty duplication for one consumer. Confirmed sound by both pre-implementation rubber-duck and gpt-5.5 review.
+
+### Module 1.9 — Auth/ownership smoke tests for the API ✅ (completed 2026-05-09)
 
 Depends on: 1.6.
 
@@ -342,6 +354,10 @@ Depends on: 1.6.
 
 **Done when:** `pnpm --filter @viz-crop/api test` passes.
 
+> ✅ Implemented in `apps/api/test/fields.routes.test.ts` (14 new tests, plus the pre-existing geometry round-trip = 15 total). Clerk is faked via `vi.mock('@clerk/fastify', …)` — `getAuth(request)` reads an `x-test-user-id` header, `clerkPlugin` is a no-op. The dev PostGIS container is reused with synthetic `crypto.randomUUID()`-namespaced user IDs and `beforeAll`+`afterAll` cleanup (pg-mem rejected because it can't run PostGIS). `vitest.config.ts` now also picks up `test/**/*.test.ts`; `tsconfig.test.json` overrides `rootDir: "."` so the new directory compiles. Reviewed by gpt-5.5 — no issues.
+
+> ⚠️ PENDING: `apps/api/test/` currently has no migration bootstrap — running the suite against a fresh DB will fail with "relation fields does not exist" until `pnpm --filter @viz-crop/api db:migrate` has been executed. Acceptable for v1 (every developer has the dev DB migrated); will be revisited if/when the API gets a CI runner that provisions a clean DB on every job.
+
 ### Phase 1 exit criteria
 
 - All field CRUD works end-to-end via curl and via the dashboard.
@@ -353,18 +369,19 @@ Depends on: 1.6.
 
 ## Phase 2 — Map foundation + basemap (Layers 1+2)
 
-**Goal:** `/fields/new` renders a full satellite map of Karnataka with road and place labels, no flicker, no double-init under React StrictMode.
+**Goal:** `/fields/new` renders a full satellite map of Karnataka with road and place labels, no flicker, and no duplicate live MapLibre instances/canvases/listeners after React StrictMode's dev-only extra setup/cleanup cycle settles.
 
-**Phase entry:** Phase 0 complete. ArcGIS API key from Pre-flight P.1.
+**Phase entry:** Phases 0-1 complete. ArcGIS API key from Pre-flight P.1.
 
 ### Module 2.1 — MapLibre installation + base styles
 
 Depends on: 0.5.
 
-1. In `apps/web`: install `maplibre-gl`.
+1. In `apps/web`: install MapLibre v5 (for example `maplibre-gl@^5.24.0`; do not float to v6 until `@esri/maplibre-arcgis` declares compatibility).
 2. Import `maplibre-gl/dist/maplibre-gl.css` once in `src/main.tsx`.
+3. Promote `VITE_ESRI_API_KEY` from "optional in early phases" to required in `src/env.ts` and update `apps/web/.env.example`; fail startup with a clear env error instead of letting ArcGIS basemap requests fail later with 499/401 responses.
 
-**Done when:** Build still passes; CSS is bundled.
+**Done when:** Build still passes; CSS is bundled; missing `VITE_ESRI_API_KEY` fails with the web env validation message.
 
 ### Module 2.2 — `useMapInstance` hook (StrictMode-safe)
 
@@ -372,17 +389,18 @@ Depends on: 2.1.
 
 1. Create `hooks/useMapInstance.ts`:
    - Accepts a container ref + initial `center`/`zoom` options.
-   - Initializes a `maplibregl.Map` exactly once (guarded against StrictMode double-effect using a ref).
-   - Tracks two distinct ready signals:
-     - `isReady` — flips on the first `map.on('load')` event (basic MapLibre load).
-     - `isStyleReady` — flips when the **active** map style has finished loading. Initially `false`. Provide an exported `markStyleReady(map)` helper (or a `setStyleReady` setter) that the basemap module calls after it applies the ArcGIS style. Re-arms to `false` whenever a new style is being applied and back to `true` on the next style `idle`/`load`.
-   - **`transformRequest` hook.** Configure MapLibre's `transformRequest(url, resourceType)` at construction time. Phase 6 will use it to attach a `Authorization: Bearer <clerk-jwt>` header to any URL beginning with `${env.VITE_API_BASE_URL}/api/eosda/render/`. To keep the token fresh after Clerk refreshes, read the latest token from a ref (e.g., a module-scope `latestTokenRef`) that the Clerk-aware caller updates. For Phase 2, `transformRequest` may simply return `{ url }` for non-render URLs; Module 6.4 wires the auth branch.
-   - Returns `{ map, isReady, isStyleReady }`.
-   - Cleans up via `map.remove()` on unmount.
+   - Initializes a `maplibregl.Map` with a ref guard, but cleanup must always call `map.remove()` and clear the ref. React StrictMode intentionally runs one extra setup/cleanup cycle in dev; the requirement is one live map after the final mount, not exactly one constructor call in dev.
+   - Tracks map/style readiness:
+      - `isReady` — flips on the first `map.on('load')` event (basic MapLibre load).
+      - `isStyleReady` — flips when the **active** map style has finished loading. Initially `false`. Provide exported style-lifecycle helpers (for example `beginStyleChange(map)` and `markStyleReady(map)`) or equivalent setters that the basemap module uses to set `false` before `BasemapStyle.applyStyle(...)` and `true` only after the new style's `style.load`/`idle` completion.
+      - `styleEpoch` — increments every time the active style becomes ready. Dynamic layer effects depend on this value so they can re-add sources/layers after any future basemap/style swap.
+   - **`transformRequest` hook.** Configure MapLibre's `transformRequest(url, resourceType)` at construction time. For Phase 2 it should simply return `{ url }` for all URLs. Phase 6 will attach `Authorization: Bearer <clerk-jwt>` only to URLs beginning with `${env.VITE_API_BASE_URL}/api/eosda/render/`; do not call `getToken()` per tile request. Instead, Module 6.4 must keep a synchronous token ref fresh from a Clerk-aware effect/subscription.
+   - Returns `{ map, isReady, isStyleReady, styleEpoch }`.
+   - Cleans up via `map.remove()` on unmount and nulls the map ref.
 2. Document the StrictMode rationale in the hook with a brief comment.
-3. Document the rule: **all dynamic layers (Field, NDVI, overlays that reference style layers) must wait on `isStyleReady`, not `isReady`.** Applying a basemap style replaces sources/layers, so anything mounted on `isReady` alone will silently disappear when the style swaps in.
+3. Document the rule: **all dynamic layers and drawing adapters (Field, Terra Draw, NDVI, overlays that reference style layers) must wait on `isStyleReady` + `styleEpoch`, not `isReady`.** Applying a basemap style replaces sources/layers, so anything mounted on `isReady` alone will silently disappear when the style swaps in.
 
-**Done when:** Mounting and unmounting a host component does not leak `<canvas>` elements (verify in DOM inspector); `isStyleReady` is observably `false` until the basemap style applies and `true` afterward.
+**Done when:** Mounting and unmounting a host component does not leak `<canvas>` elements (verify in DOM inspector); StrictMode settles with one live map/canvas; `isStyleReady` is observably `false` until the basemap style applies and `true` afterward; `styleEpoch` increments after the ArcGIS style is ready.
 
 ### Module 2.3 — `MapView` component
 
@@ -391,40 +409,45 @@ Depends on: 2.2.
 1. Create `components/map/MapView.tsx`:
    - Accepts `children` (overlay components) and a `style` prop (CSS-only sizing, no MapLibre style here yet).
    - Owns a `<div ref={containerRef}>` and calls `useMapInstance`.
-   - Provides `map` via React context so descendant overlays can subscribe.
+   - Provides `map`, `isReady`, `isStyleReady`, and `styleEpoch` via React context so descendant overlays can subscribe without prop-drilling.
 2. Create `components/map/MapContext.ts` exposing the typed context.
 
-**Done when:** `<MapView style={{ height: '100vh' }} />` renders an empty grey MapLibre canvas.
+**Done when:** `<MapView style={{ height: '100%' }} />` renders an empty grey MapLibre canvas inside a sized parent.
 
 ### Module 2.4 — ArcGIS basemap plugin
 
 Depends on: 2.3, Pre-flight P.1.
 
-1. Install `@esri/maplibre-arcgis`.
-2. Create `lib/arcgis.ts` exporting an `applyArcgisImagery(map, token)` helper that calls `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })` and resolves once the style finishes loading (await the underlying promise / wait for the next `map.once('idle')` if the helper is fire-and-forget).
-3. Create `components/map/BasemapLayer.tsx` — child of `MapView` that calls `applyArcgisImagery` once `isReady` flips true. **After** the style finishes applying, call `markStyleReady(map)` from `useMapInstance` so downstream layers can mount.
-4. Add a check: log a warning if the resolved style does not contain any `symbol` layers (some imagery styles don't ship labels — needed to know whether Phase 6 must use `beforeId` differently).
+1. Install `@esri/maplibre-arcgis@^1.2.0` (peer requires MapLibre `>=5.11.0`; keep MapLibre pinned to v5 for now).
+2. Create `lib/arcgis.ts` exporting an `applyArcgisImageryWithLabels(map, token)` helper:
+   - Start with the documented MapLibre ArcGIS plugin call: `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })`.
+   - The Phase 2 goal is satellite **plus road/place labels**. If the resolved style has no `symbol` layers, switch to the documented ArcGIS imagery-with-labels/hybrid style for this account/API version or merge the imagery label style before marking the module complete. A console warning is useful for diagnosis but is not enough to satisfy the goal.
+   - Resolve only after the newly applied style has emitted `style.load` and/or the next `idle`.
+3. Create `components/map/BasemapLayer.tsx` — child of `MapView` that calls `beginStyleChange(map)` before `applyArcgisImageryWithLabels(...)` and `markStyleReady(map)` after the new style finishes loading. Gate on `isReady` and ensure the effect is idempotent under StrictMode.
+4. Add `findFirstSymbolLayerId(map)` in `lib/map-style.ts` (or similar) by scanning `map.getStyle().layers` for the first layer with `type === 'symbol'`; never hard-code Esri layer IDs.
+5. Verify Esri attribution is automatically displayed by the plugin.
 
-**Done when:** `MapView + BasemapLayer` shows Maxar Vivid imagery with road and place labels (or, if the style ships without labels, a clear console note about it).
+**Done when:** `MapView + BasemapLayer` shows Maxar Vivid/satellite imagery with road and place labels, Esri attribution is visible, and the style contains at least one `symbol` layer.
 
 ### Module 2.5 — `CreateLayout` shell + Karnataka default
 
 Depends on: 2.4.
 
-1. Create `layouts/CreateLayout.tsx` — 2-column responsive layout: ~70% map, ~30% form column. Form column contains a placeholder for now.
+1. Create `layouts/CreateLayout.tsx` — 2-column responsive layout: ~70% map, ~30% form column. Form column contains a placeholder for now. Account for the authenticated layout's sticky 3.5rem header (`min-height: calc(100vh - 3.5rem)` or equivalent) so the map does not overflow the viewport.
 2. Wire `routes/_auth/fields.new.tsx` to render `CreateLayout` with `<MapView center={[75.7139, 15.3173]} zoom={8}><BasemapLayer /></MapView>`.
-3. Add Esri attribution display verification (the plugin should add it automatically; visually confirm).
+3. Keep the map subtree independent from the form placeholder; future form state must not be passed as props into `MapView`.
 
 **Done when:**
-- `/fields/new` shows a satellite map of Karnataka.
+- `/fields/new` shows a satellite map of Karnataka with road/place labels.
 - Esri attribution visible.
-- StrictMode dev-mode does not double-init the map.
+- StrictMode dev-mode settles with one live map/canvas/listener set.
 
 ### Phase 2 exit criteria
 
-- Map renders satellite + (where available) labels at zoom 8 over Karnataka.
+- Map renders satellite + labels at zoom 8 over Karnataka.
 - No console errors related to MapLibre or ArcGIS.
-- Page survives multiple navigations between `/` and `/fields/new` without leaks.
+- Page survives multiple navigations between `/` and `/fields/new` without duplicate canvases/WebGL contexts/listeners.
+- `VITE_ESRI_API_KEY` is documented and validated as required for the web app.
 
 ---
 
@@ -440,28 +463,31 @@ Depends on: 0.5.
 
 1. Install `zustand`.
 2. Create `stores/useFieldStore.ts`:
-   - State: `draftPolygon: GeoJSON.Polygon | null`, `currentFieldId: string | null`.
-   - Actions: `setDraftPolygon`, `clearDraft`, `setCurrentField`.
+   - State: `draftPolygon: GeoJSON.Polygon | null`, `draftAreaHectares: number | null`, `draftValid: boolean`, `draftErrors: string[]`, `currentFieldId: string | null`.
+   - Actions: `setDraftPolygon`, `setDraftValidation`, `clearDraft`, `setCurrentField`.
 3. Create `stores/useUiStore.ts` (used by Phase 5 onward):
    - State: `selectedViewId`, `selectedIndex`, `ndviOpacity`, `activeSidebarItem`, `bottomBarTab`.
    - Actions: corresponding setters.
+4. Use selectors for all store reads; use `useShallow` when selecting multiple values so form typing and UI state changes do not re-render the map subtree.
 
-**Done when:** A scratch component reads/writes both stores and re-renders correctly.
+**Done when:** A scratch component reads/writes both stores and re-renders only for selected slices.
 
 ### Module 3.2 — Terra-draw integration
 
-Depends on: 2.3, 3.1.
+Depends on: 2.4, 3.1.
 
 1. Install `terra-draw` and `terra-draw-maplibre-gl-adapter`.
 2. Create `hooks/useFieldDrawing.ts`:
-   - Subscribes to the map context.
-   - Constructs a `TerraDraw` instance with the MapLibre adapter and a single `TerraDrawPolygonMode`.
-   - On feature finish, validates with the shared `polygonGeoJsonSchema` (reusing zod from `packages/shared`).
-   - On valid finish, writes the polygon to `useFieldStore.setDraftPolygon`.
-   - Exposes `start()`, `stop()`, `clear()`.
+   - Subscribes to the map context and constructs Terra Draw only when `isStyleReady` is true. The Terra Draw MapLibre adapter touches style layers, so it must not initialize on `isReady` alone.
+   - Constructs a `TerraDraw` instance with `new TerraDrawMapLibreGLAdapter({ map })` and a single `TerraDrawPolygonMode`.
+   - Configure polygon-mode client validation for self-intersections using Terra Draw's built-in `ValidateNotSelfIntersecting` (or an equivalent shared segment-intersection guard). Run it on `finish`/`commit` updates so bowties never become accepted drafts.
+   - Listen to Terra Draw `change`/provisional updates for live area/errors and `finish` for completed drafts. Use `getSnapshotFeature(id)` / `getSnapshot()` to read the completed Polygon feature.
+   - Keep one draft polygon per field: when a new polygon is accepted, clear any previous Terra Draw feature and replace `useFieldStore.draftPolygon`.
+   - Run `polygonGeoJsonSchema.safeParse(...)` after finish to populate `draftValid`/`draftErrors` (area and India-bbox issues should remain visible inline instead of silently discarding the shape). Only structural/self-intersection failures should be rejected with a toast and discarded.
+   - Exposes `start()`, `stop()`, `clear()`; cleanup must unsubscribe Terra Draw events and call `draw.stop()`/`draw.clear()` as appropriate.
 3. Create `components/map/DrawControl.tsx` — a small toolbar (top-right of map) with a "Draw" button that toggles draw mode and a "Clear" button.
 
-**Done when:** Drawing a polygon on the map writes a valid GeoJSON Polygon into `useFieldStore`. Drawing an invalid polygon (e.g., self-intersecting) shows a toast and discards.
+**Done when:** Drawing a polygon on the map writes a GeoJSON Polygon plus validation state into `useFieldStore`; self-intersecting polygons show a toast and are discarded; too-small/too-large/outside-India polygons remain visible but are marked invalid with inline errors.
 
 ### Module 3.3 — `FieldLayer` (Layer 3)
 
@@ -469,11 +495,12 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
 1. Create `components/map/FieldLayer.tsx`:
    - **Waits for `isStyleReady` from `useMapInstance` before touching the style** (do not mount on `isReady` alone — the basemap style swap will erase any sources/layers added too early).
-   - Reads `draftPolygon` from `useFieldStore` (or, on the analysis screen, the persisted polygon from `useField(id)`).
-   - Adds (or updates) a MapLibre `geojson` source named `field`.
+   - Reads `draftPolygon` from `useFieldStore` via a selector (or, on the analysis screen, the persisted polygon from `useField(id)`).
+   - Adds a MapLibre `geojson` source named `field` once, then updates it with `GeoJSONSource#setData(...)` when the polygon changes.
    - Adds a `fill` layer (`fill-color: #ffffff`, `fill-opacity: 0.15`) and a `line` layer (`line-color: #ffffff`, `line-width: 2`).
-   - Removes both on unmount.
-2. **Layer ordering:** Append the field `fill` and `line` layers **on top of the basemap symbol/label layers**, not below them. Per plan.md §2 the required stack is `satellite → NDVI → labels → field fill → field outline`. Phase 6 will insert NDVI below the first symbol/label layer; if `FieldLayer` is also inserted below labels it will be hidden. If you need to re-insert field layers when other layers change, do so by calling `map.moveLayer('field-fill')` / `map.moveLayer('field-outline')` to the top after the change.
+   - Removes layers before removing the source on unmount.
+   - Re-adds/re-orders itself when `styleEpoch` changes because a MapLibre style replacement removes custom sources/layers.
+2. **Layer ordering:** Append the field `fill` and `line` layers **on top of the basemap symbol/label layers**, not below them. Per plan.md §2 the required stack is `satellite → NDVI → labels → field fill → field outline`. Use `map.moveLayer('field-fill')` / `map.moveLayer('field-outline')` without a `beforeId` to keep them at the top after style/layer changes. Phase 6 can use `findFirstSymbolLayerId(map)` to insert NDVI below labels; do not hard-code Esri layer IDs.
 
 **Done when:** A drawn polygon shows a translucent fill with a white outline, and clearing the draft removes the layer cleanly.
 
@@ -481,8 +508,8 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
 Depends on: 3.2, 3.3.
 
-1. In `lib/geometry.ts`, expose `polygonAreaHectares(geom)` (Turf wrapper).
-2. In `useFieldDrawing`, also expose a derived `area`, `valid`, `errors[]` so the form can render live readouts.
+1. In `lib/geometry.ts`, expose `polygonAreaHectares(geom)` using `@turf/area` (or a shared `@viz-crop/shared` export if added); avoid importing all of `@turf/turf` for one calculation.
+2. In `useFieldDrawing`, update `useFieldStore` with derived `draftAreaHectares`, `draftValid`, and `draftErrors[]` from Terra Draw change/finish events so the form can render live readouts without instantiating another drawing hook.
 
 **Done when:** As the user draws, a small chip near the form shows the current area in hectares.
 
@@ -490,15 +517,15 @@ Depends on: 3.2, 3.3.
 
 Depends on: 1.4 (shared schemas), 3.1, 0.5 (shadcn `Form`).
 
-1. Install `react-hook-form` and `@hookform/resolvers/zod`.
+1. `react-hook-form` and `@hookform/resolvers/zod` are already dependencies in `apps/web`; if they are ever removed, reinstall them here.
 2. Create `components/forms/CreateFieldForm.tsx`:
-   - Uses `useForm` with `zodResolver(createFieldDto.omit({ geometry: true }))`.
+   - Uses `useForm` with `zodResolver(createFieldDto.omit({ geometry: true }))`, explicit `defaultValues`, and `mode: 'onChange'` so `formState.isValid` updates before submit. Keep this form in a separate subtree from `MapView` to avoid map re-renders on every keystroke.
    - Fields: name, cropType (Select with the 10 crops), season (4-option segmented control built from shadcn `Tabs` or radio group), farmerName, village, district, state.
-   - Reads `draftPolygon`, `valid` from `useFieldStore` / `useFieldDrawing`.
-   - "Create Field" button disabled until both `formState.isValid` and `draftPolygon != null && polygonValid`.
-3. On submit, calls `useCreateField().mutateAsync({ ...form, geometry: draftPolygon })`.
-4. On success, clears the draft via `clearDraft()` and navigates with `useNavigate({ to: '/fields/$id', params: { id } })`.
-5. Renders inline errors from server validation.
+   - Reads `draftPolygon`, `draftValid`, `draftErrors`, and `draftAreaHectares` from `useFieldStore` via selectors.
+   - "Create Field" button disabled until `formState.isValid`, `draftPolygon != null`, `draftValid`, and `!mutation.isPending`.
+3. On submit, assembles `{ ...form, geometry: draftPolygon }`, validates it with `createFieldDto.safeParse(...)` for a final client-side guard, then calls `useCreateField().mutateAsync(...)`.
+4. On success, navigates with `await navigate({ to: '/fields/$id', params: { id } })`, then clears the draft via `clearDraft()` to avoid a brief empty-map flash while still on `/fields/new`.
+5. Renders inline geometry errors from `draftErrors` and inline server validation errors from `ApiError.body`.
 
 **Done when:**
 - Submitting a complete form with a valid polygon creates a row visible on `/`.
@@ -511,6 +538,7 @@ Depends on: 2.5, 3.5.
 
 1. Replace the placeholder in `CreateLayout` with `<CreateFieldForm />`.
 2. Mount `<DrawControl />` and `<FieldLayer />` as `MapView` children.
+3. Keep form state local to `<CreateFieldForm />` and draft geometry in Zustand; do not pass changing form values into the map column.
 
 **Done when:** The full create flow is usable end-to-end on `/fields/new`.
 
@@ -518,7 +546,8 @@ Depends on: 2.5, 3.5.
 
 - A signed-in user draws a polygon, fills the form, and lands on `/fields/:id` (which can still be a placeholder).
 - The dashboard reflects the new field with the correct area.
-- Invalid polygons (too small/large/outside India) are rejected on both client and server.
+- Self-intersecting polygons are rejected client-side before submit.
+- Invalid polygons (too small/large/outside India) are shown inline and blocked on the client, and are still rejected by the server if submitted through any bypass.
 
 ---
 
@@ -877,7 +906,7 @@ Depends on: 8.1, 8.2.
 ### Phase 8 exit criteria — also the project exit criteria
 
 - All checklist items in plan.md §16 pass.
-- `pnpm ci` (Biome), `pnpm test`, and `pnpm build` are green.
+- `pnpm run ci` (Biome), `pnpm test`, and `pnpm build` are green.
 - README is sufficient for cold-start.
 
 ---
@@ -886,7 +915,9 @@ Depends on: 8.1, 8.2.
 
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
-| 0.6 | `routes/index.tsx` not created (spec step 4) | Module 0.8 | Dashboard placeholder lives at `routes/_auth/index.tsx` instead — adding `routes/index.tsx` would conflict with the pathless-layout `_auth` index for `/`. Reconcile when Clerk redirect lands in `_auth/route.tsx`. |
+| 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to drawing validation | Phase 3 (Module 3.2) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. Module 3.2 must add Terra Draw `ValidateNotSelfIntersecting` or an equivalent shared segment-intersection guard so the user gets instant feedback while drawing instead of a 400 from the API. |
+| 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
+| 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 
 ---
 

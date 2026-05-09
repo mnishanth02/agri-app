@@ -124,7 +124,7 @@ Start these before implementation. ArcGIS and Clerk are quick; EOSDA access/quot
 - Sign up at [developers.arcgis.com](https://developers.arcgis.com), no card required.
 - Create an API key scoped to **Basemaps**.
 - **Restrict to your domains** (`localhost`, your prod domain).
-- Save as `VITE_ESRI_API_KEY`.
+- Save as `VITE_ESRI_API_KEY`; required before Phase 2 starts.
 
 ### 2. EOSDA API Connect (~1 business day)
 - Register at [api-connect.eos.com/user-dashboard/](https://api-connect.eos.com/user-dashboard/).
@@ -181,24 +181,27 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 **Verify:** `pnpm test` passes; create a field via curl with the Clerk JWT; appears on dashboard with correct generated area; deleting removes it; another Clerk user sees an empty list.
 
 ### Phase 2 — Map foundation + Layers 1+2 + Karnataka default (~1 h)
-- Install `maplibre-gl` + `@esri/maplibre-arcgis`.
-- Build `MapView` + `useMapInstance` (StrictMode-safe).
-- Apply `arcgis/imagery` via `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })`.
-- Insert future NDVI layers below the first symbol/label layer so labels remain readable.
-- Default `[75.7139, 15.3173]` zoom 8 in `CreateLayout`.
+- Install pinned-compatible map packages: MapLibre v5 + `@esri/maplibre-arcgis` v1.x.
+- Require `VITE_ESRI_API_KEY` once the basemap ships; Esri basemap styles require an access token.
+- Build `MapView` + `useMapInstance` with StrictMode-safe cleanup: dev StrictMode may construct during the extra setup/cleanup pass, but must settle with one live map/canvas/listener set.
+- Track `isReady`, `isStyleReady`, and `styleEpoch`; dynamic layers and Terra Draw must wait for `isStyleReady` and re-add when `styleEpoch` changes because ArcGIS style application replaces MapLibre sources/layers.
+- Apply satellite imagery through `maplibreArcGIS.BasemapStyle.applyStyle(...)` and verify the chosen style includes road/place label `symbol` layers. If `arcgis/imagery` is imagery-only for the current API/account, switch to the documented imagery-with-labels/hybrid style or merge label layers before completing Phase 2.
+- Insert future NDVI layers below the first discovered symbol/label layer (`findFirstSymbolLayerId`), never a hard-coded Esri layer ID.
+- Default `[75.7139, 15.3173]` zoom 8 in `CreateLayout`, sized to the authenticated layout viewport (`calc(100vh - header)`).
 
-**Verify:** `/fields/new` shows Karnataka satellite + road/village labels; Esri attribution visible; dev StrictMode does not create duplicate maps.
+**Verify:** `/fields/new` shows Karnataka satellite + road/village labels; Esri attribution visible; navigation and dev StrictMode do not leave duplicate live maps.
 
 ### Phase 3 — Drawing + Layer 3 + Create form (~2 h)
-- Install terra-draw + adapter; `DrawControl` lives top-right of map.
-- `useFieldDrawing` hook; polygon stored in Zustand.
-- MapLibre GeoJSON source: white fill at 15 %, white 2 px outline.
-- Validate: closed ring, area ∈ [0.05 ha, 200 km²], inside India bbox.
-- `CreateFieldForm` with shadcn `<Form>` + zod resolver. 10 Indian crops; Season as 4-option segmented control.
-- "Create Field" disabled until polygon AND form valid.
-- On submit: `POST /api/fields` → on 201, navigate to `/fields/:id`.
+- Install terra-draw + MapLibre adapter; `DrawControl` lives top-right of map.
+- `useFieldDrawing` initializes only after `isStyleReady`; polygon + validation state stored in Zustand using selectors/`useShallow` so form state does not re-render the map.
+- Reject self-intersections during drawing with Terra Draw `ValidateNotSelfIntersecting` or an equivalent shared guard.
+- MapLibre GeoJSON source: white fill at 15 %, white 2 px outline; update with `GeoJSONSource#setData`, remove layers before source, and re-add/reorder on `styleEpoch`.
+- Validate full submit contract: closed ring, area ∈ [0.05 ha, 200 km²], inside India bbox. Area/bbox issues remain visible inline and keep submit disabled instead of silently discarding the draft.
+- `CreateFieldForm` with shadcn `<Form>` + zod resolver, explicit default values, and `mode: 'onChange'`. 10 Indian crops; Season as 4-option segmented control.
+- "Create Field" disabled until polygon AND form valid and mutation is not pending.
+- On submit: final `createFieldDto.safeParse` → `POST /api/fields` → on 201, navigate to `/fields/:id`, then clear the draft.
 
-**Verify:** Draw a polygon over a Karnataka field, fill the form, submit; record appears on dashboard with correct area; invalid polygons show inline error.
+**Verify:** Draw a polygon over a Karnataka field, fill the form, submit; record appears on dashboard with correct area; self-intersections toast/discard; area/bbox errors show inline and block submit.
 
 ### Phase 4 — Background EOSDA warm-up (~1 h)
 - `services/eosda-client.ts` — fetch wrapper, `EOSDA_API_KEY` injection, error mapping, and no logging of full upstream URLs containing `api_key`.
@@ -391,8 +394,8 @@ After Phase 8, this must pass cold from `pnpm install && docker compose up -d &&
 | Sidebar/bottom-bar are shells; controls are map overlays | May 2026 | Date timeline goes on the map per user instruction |
 | Async warm on Create, no job queue | May 2026 | Snappy UX without BullMQ overhead at prototype scale |
 | Frontend: Vite + TanStack Router | May 2026 | No SSR benefit for WebGL maps; Router is mature 1.x |
-| Layers 1+2: ArcGIS via @esri/maplibre-arcgis | May 2026 | Official MapLibre plugin; verify imagery label layers during Phase 2 |
-| State: TanStack Query + Zustand | May 2026 | Server vs client state separation; rate-limit caching critical |
+| Layers 1+2: ArcGIS via @esri/maplibre-arcgis | May 2026 | Official MapLibre plugin; require basemap token, verify imagery label layers, and account for full style replacement during Phase 2 |
+| State: TanStack Query + Zustand | May 2026 | Server vs client state separation; rate-limit caching critical; use selectors to avoid map re-renders from form/UI state |
 | EOSDA proxy contract corrected | May 2026 | Official docs require Search → Render by `view_id`; Statistics is async `mt_stats`; render route uses query params because `view_id` contains slashes |
 
 ---

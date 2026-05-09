@@ -1,0 +1,55 @@
+# Default: detect text vs binary, normalize to LF in the repo, check out as LF.
+# Prevents Windows checkouts from injecting CRLF into source files, which
+# breaks `pnpm run ci` (Biome's `lineEnding: "lf"` rejects CRLF).
+* text=auto eol=lf
+
+# Source code — always LF.
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.json      text eol=lf
+*.jsonc     text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.scss      text eol=lf
+*.md        text eol=lf
+*.mdx       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+*.sql       text eol=lf
+*.sh        text eol=lf
+*.env       text eol=lf
+.env.*      text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+.editorconfig  text eol=lf
+.npmrc      text eol=lf
+.nvmrc      text eol=lf
+Dockerfile  text eol=lf
+
+# Generated / lockfiles — never CRLF.
+pnpm-lock.yaml text eol=lf
+package-lock.json text eol=lf
+
+# Binary assets — never normalize.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.avif  binary
+*.svg   text eol=lf
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.zip   binary
+*.tar   binary
+*.gz    binary
