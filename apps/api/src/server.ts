@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import { env } from './env.js';
 import { registerCors } from './plugins/cors.js';
 import { dbPlugin } from './plugins/db.js';
-import { authCheckRoutes } from './routes/auth-check.js';
+import { fieldRoutes } from './routes/fields.js';
 import { healthRoutes } from './routes/health.js';
 
 const isDev = env.NODE_ENV === 'development';
@@ -42,7 +42,7 @@ export async function buildServer() {
   });
 
   await app.register(healthRoutes, { prefix: '/api' });
-  await app.register(authCheckRoutes, { prefix: '/api' });
+  await app.register(fieldRoutes, { prefix: '/api' });
 
   return app;
 }
