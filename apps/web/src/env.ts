@@ -1,14 +1,16 @@
 import { z } from 'zod';
 
-const optionalString = z.preprocess((value) => {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed === '' ? undefined : trimmed;
-}, z.string().min(1).optional());
+const ESRI_KEY_REQUIRED =
+  'VITE_ESRI_API_KEY is required (Module 2.1) — get an API key from https://developers.arcgis.com and scope it to Basemaps.';
+
+const requiredEsriKey = z.preprocess(
+  (value) => (typeof value === 'string' ? value : ''),
+  z.string().trim().min(1, ESRI_KEY_REQUIRED),
+);
 
 const schema = z.object({
   VITE_API_BASE_URL: z.string().trim().url(),
-  VITE_ESRI_API_KEY: optionalString,
+  VITE_ESRI_API_KEY: requiredEsriKey,
   VITE_CLERK_PUBLISHABLE_KEY: z
     .string()
     .trim()

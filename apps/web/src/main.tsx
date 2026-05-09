@@ -5,6 +5,7 @@ import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { env } from './env';
 import { routeTree } from './routeTree.gen';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({

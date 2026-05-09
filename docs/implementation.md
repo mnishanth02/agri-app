@@ -373,7 +373,7 @@ Depends on: 1.6.
 
 **Phase entry:** Phases 0-1 complete. ArcGIS API key from Pre-flight P.1.
 
-### Module 2.1 — MapLibre installation + base styles
+### Module 2.1 — MapLibre installation + base styles ✅ (completed 2026-05-09)
 
 Depends on: 0.5.
 
@@ -383,7 +383,7 @@ Depends on: 0.5.
 
 **Done when:** Build still passes; CSS is bundled; missing `VITE_ESRI_API_KEY` fails with the web env validation message.
 
-### Module 2.2 — `useMapInstance` hook (StrictMode-safe)
+### Module 2.2 — `useMapInstance` hook (StrictMode-safe) ✅ (completed 2026-05-09)
 
 Depends on: 2.1.
 
