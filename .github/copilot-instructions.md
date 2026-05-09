@@ -45,4 +45,4 @@ When a pending item is resolved, remove it from the table.
 Always follow `docs/implementation.md` top-to-bottom. Do not jump phases. Verify "Done when" criteria before moving on. If something is out of order, consult `docs/plan.md`.
 
 ## Testing
-Credentials to login : admin@gmail.com / Admin@123
+Use locally provisioned test credentials from secure, untracked sources (for example, a secret manager or local `.env` file). If hard-coded credentials were ever used outside local development, rotate them before reuse; environment variables are validated with zod at startup.

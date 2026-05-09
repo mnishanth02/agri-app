@@ -38,7 +38,7 @@
 ### 2.1 Package structure — Confirmed
 
 Both packages are separate npm installs, which is intentional:
-```
+```text
 terra-draw                        # core + modes + validators
 terra-draw-maplibre-gl-adapter    # MapLibre-specific adapter
 ```
@@ -111,7 +111,7 @@ From EOSDA docs:
 
 ### 3.2 Search endpoint — Confirmed correct + request body verified
 
-```
+```text
 POST https://api-connect.eos.com/api/lms/search/v2/<dataset_id>
 ```
 
@@ -183,12 +183,12 @@ tms                    → tmsTemplate
 > Upstream URL is EOSDA `/api/render/<view_id>/<bands>/<z>/<x>/<y>` and `band=NDVI` passed from the proxy.
 
 **Actual EOSDA Render API:**
-```
+```text
 GET https://api-connect.eos.com/api/render/<view_id>/<bands>/<z>/<x>/<y>?api_key=...
 ```
 
 Example:
-```
+```text
 https://api-connect.eos.com/api/render/S2/36/U/XU/2016/5/2/0/B04,B03,B02/10/611/354?api_key=...
 ```
 
@@ -208,8 +208,8 @@ The `<bands>` parameter accepts:
 | NDWI | `(B03-B08)/(B03+B08)` | `Blues` |
 
 **Additional required query params for correct visualization:**
-```
-MIN_MAX=0,1          # contrast stretch for normalized indices (-1 to 1 range, display 0-1)
+```text
+MIN_MAX=-1,1         # contrast stretch over the full normalized-index data range
 COLORMAP=RdYlGn      # colormap name (matplotlib-compatible)
 CALIBRATE=1          # convert to surface reflectance
 ```
@@ -231,22 +231,22 @@ const BAND_MAP = {
 
 ---
 
-### 3.4 `cropper_ref` for clipped tiles — UNCONFIRMED, NEEDS VERIFICATION
+### 3.4 `cropper_ref` for clipped tiles — Documented parameter, creation flow needs verification
 
 **What the plan says:**
 > Use EOSDA `cropper_ref` for field-clipped render tiles. Upstream URL includes `cropper_ref` from the field as a query param.
 
 **What the official Render API docs show:**
-The documented render endpoint parameters are: `view_id`, `bands`, `z`, `x`, `y`, `api_key`, `MIN_MAX`, `CALIBRATE`, `COLORMAP`, `PANSHARPENING`, `CLUSTERING`, `CLUSTERS_NO`, `MIN_AREA`.
+The documented render endpoint parameters include: `view_id`, `bands`, `z`, `x`, `y`, `api_key`, `MIN_MAX`, `CALIBRATE`, `COLORMAP`, `PANSHARPENING`, `CLUSTERING`, `CLUSTERS_NO`, `MIN_AREA`, and `cropper_ref`.
 
-**There is no `cropper_ref` parameter in the documented Render API.**
+**`cropper_ref` is documented as an optional AOI reference from the Cropper API that makes pixels outside the AOI transparent.** The remaining verification item is the Cropper creation request/response contract and whether its returned reference should be stored directly in `fields.eosda_cropper_ref`.
 
 **Options:**
-1. `cropper_ref` may be an undocumented EOSDA feature available to API Connect accounts — confirm with EOSDA support.
-2. The Field Management `id` (returned when you create a field via `/field-management`) may be used differently than described — possibly with a different endpoint for field-scoped tiles.
+1. The Cropper API creation endpoint/request format may need confirmation from EOSDA support before implementation.
+2. The Field Management `id` (returned when you create a field via `/field-management`) is likely separate from Render `cropper_ref` unless EOSDA confirms otherwise.
 3. The app may need to clip NDVI tiles client-side (using the field polygon as a MapLibre clip mask) rather than relying on server-side clipping.
 
-**Action:** Add to the EOSDA activation email: *"Does the Render API support a `cropper_ref` or field ID parameter for polygon-clipped tiles? If so, what is the parameter name and accepted value format?"*
+**Action:** Add to the EOSDA activation email: *"What endpoint/request body creates a `cropper_ref` for polygon-clipped Render tiles, and what response field/value should we persist?"*
 
 **Until confirmed, the implementation should render unclipped NDVI tiles and apply the field polygon as a visual overlay (which we already do via `FieldLayer`). The user sees the NDVI heatmap under the white field outline — acceptable for v2.**
 
@@ -255,7 +255,7 @@ The documented render endpoint parameters are: `view_id`, `bands`, `z`, `x`, `y`
 ### 3.5 Field Management (cropper_ref creation) — Confirmed with corrections
 
 **Endpoint:**
-```
+```text
 POST https://api-connect.eos.com/field-management
 Header: x-api-key: <key>
 Content-Type: application/json
@@ -296,7 +296,7 @@ GET    /field-management/fields         # list all fields
 ### 3.6 Statistics endpoint — Confirmed with corrections
 
 **Task creation:**
-```
+```text
 POST https://api-connect.eos.com/api/gdw/api
 Header: x-api-key: <key>
 ```
@@ -333,7 +333,7 @@ Header: x-api-key: <key>
 ```
 
 **Polling:**
-```
+```text
 GET https://api-connect.eos.com/api/gdw/api/<task_id>
 Header: x-api-key: <key>
 ```
@@ -360,6 +360,8 @@ Header: x-api-key: <key>
   ]
 }
 ```
+
+**Note on field name inconsistency:** The Statistics endpoint returns `scene_id` (snake_case) while the Search endpoint returns `sceneID` (camelCase). Normalize both keys to the common `SceneDto.sceneId` property when parsing API responses.
 
 **Corrections needed in plan:**
 
@@ -448,14 +450,14 @@ const INDEX_TO_BAND: Record<string, { formula: string; colormap: string }> = {
 
 ### 5.2 `cropper_ref` in render — Unconfirmed feature
 
-The plan relies on passing `cropper_ref` as a query param to EOSDA's render endpoint for polygon-clipped tiles. This parameter is not in the official docs. Two possible outcomes:
-- **If confirmed:** Add `cropper_ref=<field.eosda_cropper_ref>` to the upstream render URL.
-- **If not available:** The field outline from `FieldLayer` provides visual context but NDVI renders the full scene. This is acceptable for v2. The `eosda_cropper_ref` column and `warmField` cropper creation step may be unnecessary overhead for v2 if clipping is not available.
+The plan relies on passing `cropper_ref` as a query param to EOSDA's render endpoint for polygon-clipped tiles. This parameter is documented for Render, but the app still needs the Cropper creation endpoint/request/response contract before it can populate `fields.eosda_cropper_ref`. Two possible outcomes:
+- **If the Cropper flow is confirmed:** Persist the returned reference and add `cropper_ref=<field.eosda_cropper_ref>` to the upstream render URL.
+- **If the Cropper flow is not available:** The field outline from `FieldLayer` provides visual context but NDVI renders the full scene. This is acceptable for v2. The `eosda_cropper_ref` column and `warmField` cropper creation step may be unnecessary overhead for v2 if clipping is not available.
 
 ### 5.3 Stats polling — timeout spec
 
 Sync polling in a Fastify route handler. The `task_timeout` value from the EOSDA task creation response should set the cap. Recommended implementation:
-```
+```text
 - Poll interval: 2s
 - Max wait: min(task_timeout, 60) seconds
 - On timeout: return 504 to client with { error: 'STATS_TIMEOUT', taskId }
@@ -496,7 +498,7 @@ The `tokenRef` should live in the component that owns `useMapInstance`, not insi
 
 The canonical layer stack (`satellite → NDVI → labels → field fill → field outline`) is implied by both modules but never stated in one place. Consolidate into a single comment block in `lib/map-style.ts`:
 
-```
+```text
 Stack (bottom to top):
 1. ArcGIS satellite (via BasemapStyle)
 2. NDVI raster (below first symbol layer, using findFirstSymbolLayerId)
@@ -556,7 +558,7 @@ Module 4.5 says `warmField` swallows all errors internally. Module 4.6 adds an o
 
 Include these questions when emailing `api.support@eosda.com`:
 
-```
+```text
 Subject: Trial activation + technical questions — API Connect account [your account email]
 
 Hi EOSDA support,
@@ -600,7 +602,7 @@ Thank you.
 
 ### 8.1 End-to-End Flow (6 Steps)
 
-```
+```text
 [1] User draws polygon on /fields/new (Terra Draw)
          ↓
 [2] POST /api/fields → DB insert → void warmField(fieldId)
@@ -690,7 +692,7 @@ reply
 return reply.send(Buffer.from(await upstream.arrayBuffer()));
 ```
 
-**Formula encoding — CONFIRMED by official docs:** The formula goes **literally in the path without URL-encoding**. EOSDA's render router knows the `view_id` has a fixed depth (e.g. `S2/{grid_zone}/{grid_square}/{grid_id}/{year}/{month}/{day}/{seq}` = 8 segments) so it counts from the right to find `{z}/{x}/{y}` and captures everything in between as the bands/formula. The `/` characters inside `(B08-B04)/(B08+B04)` become part of the path and EOSDA parses them correctly. Node.js `fetch()` sends the string as-is, so this works server-side. Do NOT URL-encode the formula.
+**Formula encoding — inferred from EOSDA examples:** EOSDA example URLs show formulas used literally in the path without URL-encoding. The apparent path structure treats `view_id` as a fixed-depth prefix (e.g. `S2/{grid_zone}/{grid_square}/{grid_id}/{year}/{month}/{day}/{seq}` = 8 segments), then captures the bands/formula before `{z}/{x}/{y}`. Because this is inferred from examples rather than an explicit router contract, keep the activation-email question in §7 and verify before relying on formula paths in production.
 
 ---
 
@@ -700,7 +702,7 @@ return reply.send(Buffer.from(await upstream.arrayBuffer()));
 
 **What is now confirmed:**
 - The `cropper_ref` query parameter IS confirmed in the Render API docs: "optional AOI reference from Cropper API; any image data that does not fall into AOI is made transparent." ✅
-- The `/api/render/cropper/` **creation endpoint** is NOT documented on the Render API page. It exists as a separate "Cropper API" but the URL and request format are unknown from the pages fetched. 🔴
+- The Cropper creation flow appears in EOSDA examples, but the app should still verify the exact request shape, auth style, and returned value type before persisting it. 🔴
 
 **Impact without `cropper_ref`:**
 - NDVI tiles cover the entire Sentinel-2 scene (~10,000 km²), not just the user's field
@@ -711,8 +713,8 @@ return reply.send(Buffer.from(await upstream.arrayBuffer()));
 
 | Path | Condition | What to implement |
 |---|---|---|
-| **Path A: Cropper API found** | Find endpoint from EOSDA docs or support email | Module 4.2 as written; add `cropper_ref` to render upstream URL |
-| **Path B: v2 fallback** | Cropper endpoint not found before Phase 4 | Skip Module 4.2; render full-scene tiles; FieldLayer provides field outline context |
+| **Path A: Cropper API confirmed** | Verify endpoint, request body, auth style, and response value type from EOSDA docs or support email | Module 4.2 as written; add `cropper_ref` to render upstream URL |
+| **Path B: v2 fallback** | Cropper flow not confirmed before Phase 4 | Skip Module 4.2; render full-scene tiles; FieldLayer provides field outline context |
 
 **Recommendation for v2:** Implement Path B first. The render proxy already conditionally adds `cropper_ref` (see §8.2 code spec) — once the Cropper API is found and the ref is populated, it will activate automatically. This lets you ship NDVI now and clip later.
 

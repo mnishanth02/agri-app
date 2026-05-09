@@ -67,12 +67,7 @@ export type MapViewProps = {
   className?: string;
 };
 
-export function MapView({ center, zoom, children, style, className }: MapViewProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { map, isReady, isStyleReady, styleEpoch } = useMapInstance(containerRef, {
-    center,
-    zoom,
-  });
+function omitPositionStyles(style: CSSProperties | undefined): CSSProperties {
   const safeStyle = { ...style };
   delete safeStyle.position;
   delete safeStyle.top;
@@ -80,6 +75,16 @@ export function MapView({ center, zoom, children, style, className }: MapViewPro
   delete safeStyle.bottom;
   delete safeStyle.left;
   delete safeStyle.inset;
+  return safeStyle;
+}
+
+export function MapView({ center, zoom, children, style, className }: MapViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { map, isReady, isStyleReady, styleEpoch } = useMapInstance(containerRef, {
+    center,
+    zoom,
+  });
+  const safeStyle = omitPositionStyles(style);
 
   const contextValue = useMemo<MapContextValue>(
     () => ({ map, isReady, isStyleReady, styleEpoch }),
