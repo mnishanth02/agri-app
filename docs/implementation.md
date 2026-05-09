@@ -4,9 +4,9 @@
 >
 > Each phase contains modules. Each module contains tasks. Tasks are written so they can be executed one at a time, in order. A later task may assume earlier tasks are done. Module-level dependencies are called out at the top of every module.
 
-**Document version:** 1.0
-**Source of truth for architecture/decisions:** [`plan.md`](./plan.md)
-**Status:** Implementation-ready
+**Document version:** 1.1
+**Source of truth:** [`plan.md`](./plan.md) owns product decisions and sequencing; [`architecture.md`](./architecture.md) owns technical architecture, database schema, and API contracts.
+**Status:** Phase 0-2 complete; review corrections applied before Phase 3
 
 ---
 
@@ -45,10 +45,10 @@ These are blocking for later phases but require external lead time. Kick them of
 | # | Task | Blocks | Where it lands |
 |---|---|---|---|
 | P.1 | Sign up at [developers.arcgis.com](https://developers.arcgis.com); create API key scoped to **Basemaps**; restrict to `localhost` + prod domain. This key becomes required once Phase 2 ships. | Phase 2 | `VITE_ESRI_API_KEY` |
-| P.2 | Sign up at [api-connect.eos.com](https://api-connect.eos.com/user-dashboard/); email `api.support@eosda.com` to activate the trial. | Phase 4 | `EOSDA_API_KEY` |
+| P.2 | Sign up at [api-connect.eos.com](https://api-connect.eos.com/user-dashboard/); email `api.support@eosda.com` to activate the trial and ask for the Cropper API creation flow, Field Management `field_id` compatibility with Render `cropper_ref`, and current trial rate limits. | Phase 4 for Search; Phase 6 for clipped Render tiles | `EOSDA_API_KEY`; support response recorded in the Phase 4/6 notes |
 | P.3 | Sign up at [clerk.com](https://clerk.com); create application; configure `http://localhost:5173` redirect; copy publishable + secret keys. | Phase 0.8 | `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` |
 
-**Pre-flight done when:** all three keys live in a local `.env` (never committed) and the `.env.example` files in `apps/web` and `apps/api` document them.
+**Pre-flight done when:** all three keys live in a local `.env` (never committed), the `.env.example` files in `apps/web` and `apps/api` document them, and the EOSDA support response is captured before closing the modules that depend on it. Search can proceed with just `EOSDA_API_KEY`; field-clipped Render tiles require either a confirmed `cropper_ref` flow or the documented Path B fallback.
 
 ---
 
@@ -233,7 +233,7 @@ Depends on: 0.4.
 
 Depends on: 1.1, 0.2.
 
-1. Create `src/db/schema.ts` with the tables defined in [plan.md §7](./plan.md#7-database-schema):
+1. Create `src/db/schema.ts` with the tables defined in [`architecture.md` §5](./architecture.md#5-database-schema):
    - `fields` (with PostGIS `geometry('Polygon', 4326)`, generated `area_hectares`, `eosda_cropper_ref`, `sowing_date`, validity + SRID checks).
    - `cached_scenes`.
    - `cached_ndvi_stats`.
@@ -267,7 +267,7 @@ Depends on: 0.3.
    - `polygonGeoJsonSchema` — strict GeoJSON Polygon (single outer ring, optional holes), float lon/lat.
    - Refinements: ring closed (first === last), at least 4 positions in outer ring, all points inside India bbox `[68, 6, 98, 38]`.
 2. In `packages/shared/src/field.ts`:
-   - `cropTypeEnum` — exactly the 10 crops in plan.md §3.
+   - `cropTypeEnum` — exactly the 10 crops in [`plan.md` Create flow](./plan.md#create-fieldsnew).
    - `seasonEnum` — `['Kharif', 'Rabi', 'Zaid', 'Annual']`.
    - `createFieldDto` — name (1–120), cropType, season, optional metadata, geometry.
    - `updateFieldDto` — `createFieldDto.partial().omit({ geometry: true })` (geometry is immutable for v2; document this).
@@ -316,7 +316,7 @@ Depends on: 0.7, 0.8, 1.6.
    - `useField(id)` — `useQuery(['fields', id])`.
    - `useCreateField()` — `useMutation` POST + invalidate `['fields']`.
    - `useUpdateField(id)` and `useDeleteField(id)` similar.
-2. Set sensible TanStack defaults (5 min stale on the list per plan.md §10).
+2. Set sensible TanStack defaults (5 min stale for both `useFieldList()` / `['fields']` and `useField(id)` / `['fields', id]` per [`plan.md` TanStack Query cache defaults](./plan.md#tanstack-query-cache-defaults)).
 
 **Done when:** A scratch component listing `useFieldList().data` renders the seeded user's fields.
 
@@ -358,7 +358,7 @@ Depends on: 1.6.
 
 > ⚠️ PENDING: `apps/api/test/` currently has no migration bootstrap — running the suite against a fresh DB will fail with "relation fields does not exist" until `pnpm --filter @viz-crop/api db:migrate` has been executed. Acceptable for v1 (every developer has the dev DB migrated); will be revisited if/when the API gets a CI runner that provisions a clean DB on every job.
 
-### Phase 1 exit criteria
+### Phase 1 exit criteria ✅ (completed 2026-05-09)
 
 - All field CRUD works end-to-end via curl and via the dashboard.
 - Generated `area_hectares` matches a Turf-computed value within ~1%.
@@ -367,13 +367,13 @@ Depends on: 1.6.
 
 ---
 
-## Phase 2 — Map foundation + basemap (Layers 1+2)
+## Phase 2 — Map foundation + basemap (Layers 1+2) ✅ (completed 2026-05-09)
 
 **Goal:** `/fields/new` renders a full satellite map of Karnataka with road and place labels, no flicker, and no duplicate live MapLibre instances/canvases/listeners after React StrictMode's dev-only extra setup/cleanup cycle settles.
 
 **Phase entry:** Phases 0-1 complete. ArcGIS API key from Pre-flight P.1.
 
-### Module 2.1 — MapLibre installation + base styles
+### Module 2.1 — MapLibre installation + base styles ✅ (completed 2026-05-09)
 
 Depends on: 0.5.
 
@@ -383,7 +383,7 @@ Depends on: 0.5.
 
 **Done when:** Build still passes; CSS is bundled; missing `VITE_ESRI_API_KEY` fails with the web env validation message.
 
-### Module 2.2 — `useMapInstance` hook (StrictMode-safe)
+### Module 2.2 — `useMapInstance` hook (StrictMode-safe) ✅ (completed 2026-05-09)
 
 Depends on: 2.1.
 
@@ -402,7 +402,7 @@ Depends on: 2.1.
 
 **Done when:** Mounting and unmounting a host component does not leak `<canvas>` elements (verify in DOM inspector); StrictMode settles with one live map/canvas; `isStyleReady` is observably `false` until the basemap style applies and `true` afterward; `styleEpoch` increments after the ArcGIS style is ready.
 
-### Module 2.3 — `MapView` component
+### Module 2.3 — `MapView` component ✅ (completed 2026-05-09)
 
 Depends on: 2.2.
 
@@ -414,14 +414,14 @@ Depends on: 2.2.
 
 **Done when:** `<MapView style={{ height: '100%' }} />` renders an empty grey MapLibre canvas inside a sized parent.
 
-### Module 2.4 — ArcGIS basemap plugin
+### Module 2.4 — ArcGIS basemap plugin ✅ (completed 2026-05-09)
 
 Depends on: 2.3, Pre-flight P.1.
 
 1. Install `@esri/maplibre-arcgis@^1.2.0` (peer requires MapLibre `>=5.11.0`; keep MapLibre pinned to v5 for now).
 2. Create `lib/arcgis.ts` exporting an `applyArcgisImageryWithLabels(map, token)` helper:
-   - Start with the documented MapLibre ArcGIS plugin call: `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })`.
-   - The Phase 2 goal is satellite **plus road/place labels**. If the resolved style has no `symbol` layers, switch to the documented ArcGIS imagery-with-labels/hybrid style for this account/API version or merge the imagery label style before marking the module complete. A console warning is useful for diagnosis but is not enough to satisfy the goal.
+   - Use the documented MapLibre ArcGIS plugin call: `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })` — `arcgis/imagery` is the `complete` style per the [Basemap Styles types reference](https://developers.arcgis.com/rest/basemap-styles/types/) (satellite imagery + place/road labels). Do **not** use `arcgis/imagery/standard` (imagery base/detail layer only, no labels) or `arcgis/imagery/labels` (labels only).
+   - The Phase 2 goal is satellite **plus road/place labels**. The selected style must contain `symbol` layers; a console warning is useful for diagnosis but is not enough to satisfy the goal.
    - Resolve only after the newly applied style has emitted `style.load` and/or the next `idle`.
 3. Create `components/map/BasemapLayer.tsx` — child of `MapView` that calls `beginStyleChange(map)` before `applyArcgisImageryWithLabels(...)` and `markStyleReady(map)` after the new style finishes loading. Gate on `isReady` and ensure the effect is idempotent under StrictMode.
 4. Add `findFirstSymbolLayerId(map)` in `lib/map-style.ts` (or similar) by scanning `map.getStyle().layers` for the first layer with `type === 'symbol'`; never hard-code Esri layer IDs.
@@ -429,7 +429,7 @@ Depends on: 2.3, Pre-flight P.1.
 
 **Done when:** `MapView + BasemapLayer` shows Maxar Vivid/satellite imagery with road and place labels, Esri attribution is visible, and the style contains at least one `symbol` layer.
 
-### Module 2.5 — `CreateLayout` shell + Karnataka default
+### Module 2.5 — `CreateLayout` shell + Karnataka default ✅ (completed 2026-05-09)
 
 Depends on: 2.4.
 
@@ -442,7 +442,7 @@ Depends on: 2.4.
 - Esri attribution visible.
 - StrictMode dev-mode settles with one live map/canvas/listener set.
 
-### Phase 2 exit criteria
+### Phase 2 exit criteria ✅ (completed 2026-05-09)
 
 - Map renders satellite + labels at zoom 8 over Karnataka.
 - No console errors related to MapLibre or ArcGIS.
@@ -500,7 +500,7 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
    - Adds a `fill` layer (`fill-color: #ffffff`, `fill-opacity: 0.15`) and a `line` layer (`line-color: #ffffff`, `line-width: 2`).
    - Removes layers before removing the source on unmount.
    - Re-adds/re-orders itself when `styleEpoch` changes because a MapLibre style replacement removes custom sources/layers.
-2. **Layer ordering:** Append the field `fill` and `line` layers **on top of the basemap symbol/label layers**, not below them. Per plan.md §2 the required stack is `satellite → NDVI → labels → field fill → field outline`. Use `map.moveLayer('field-fill')` / `map.moveLayer('field-outline')` without a `beforeId` to keep them at the top after style/layer changes. Phase 6 can use `findFirstSymbolLayerId(map)` to insert NDVI below labels; do not hard-code Esri layer IDs.
+2. **Layer ordering:** Append the field `fill` and `line` layers **on top of the basemap symbol/label layers**, not below them. Per [`plan.md` Field Analysis Screen Anatomy](./plan.md#2-field-analysis-screen-anatomy), the required stack is `satellite → NDVI → labels → field fill → field outline`. Use `map.moveLayer('field-fill')` / `map.moveLayer('field-outline')` without a `beforeId` to keep them at the top after style/layer changes. Phase 6 can use `findFirstSymbolLayerId(map)` to insert NDVI below labels; do not hard-code Esri layer IDs.
 
 **Done when:** A drawn polygon shows a translucent fill with a white outline, and clearing the draft removes the layer cleanly.
 
@@ -553,7 +553,9 @@ Depends on: 2.5, 3.5.
 
 ## Phase 4 — EOSDA warm-up service
 
-**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that creates an EOSDA `cropper_ref`, runs a Search for the last 6 months of Sentinel-2, and upserts results into `cached_scenes`. The POST response is fast either way.
+**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that discovers the latest available Sentinel-2 scene metadata for the polygon and upserts that scene into `cached_scenes`. It also creates/reuses an EOSDA Render `cropper_ref` only after the Cropper API creation flow is confirmed; until then, `eosda_cropper_ref` remains `NULL` and later render tiles are scene-wide under the field outline. The POST response is fast either way. Do **not** prefetch six months of imagery, statistics, or tiles during field creation; the timeline is expanded later through the cache-first scenes route.
+
+> Design note: EOSDA Search is the source of available Sentinel-2 dates. Search still requires a date range, so "latest available" means querying a configurable recent window with `sort: { date: 'desc' }` and a small `limit`, then expanding the window only if no scene is found.
 
 **Phase entry:** Phase 1 complete. Pre-flight P.2 (EOSDA key activated).
 
@@ -562,31 +564,34 @@ Depends on: 2.5, 3.5.
 Depends on: 0.4, 0.8.
 
 1. Create `apps/api/src/services/eosda-client.ts`:
-   - `eosda.request(path, init)` — wraps `fetch` against `https://api-connect.eos.com`, injects `EOSDA_API_KEY` (via header where supported, query fallback otherwise per plan.md §13).
+   - `eosda.request(path, init)` — wraps `fetch` against `https://api-connect.eos.com`, injects `EOSDA_API_KEY` via the `x-api-key` header, and only supports an `api_key` query fallback behind an explicit live-tested option for endpoints that reject header auth.
    - Maps non-2xx responses to typed errors (`EosdaError` with `status`, `body`).
-   - Logs only the path + status, **never** the full URL when it carries `api_key`.
+   - Logs only the path + status, **never** the full URL when it carries credentials.
 2. Make `EOSDA_API_KEY` a required env var (now that this phase is active).
 
-**Done when:** A small ad-hoc script can hit a low-impact EOSDA endpoint (e.g., user/profile if available) and parse the response.
+**Done when:** Unit tests prove request construction/error mapping, and an optional `RUN_EOSDA_LIVE=1` smoke can hit Search with a tiny `limit` against a known polygon without leaking the API key in logs.
 
-### Module 4.2 — Cropper-ref creation/reuse
+### Module 4.2 — Cropper-ref creation/reuse (conditional)
 
 Depends on: 4.1, 1.2.
 
 1. Add `services/eosda-cropper.ts` with `getOrCreateCropperRef(field)`:
    - If `field.eosda_cropper_ref` is set, return it.
-   - Else POST the field polygon to EOSDA's cropper endpoint per current docs, capture the returned reference.
-   - `UPDATE fields SET eosda_cropper_ref = $1 WHERE id = $2`.
+   - If EOSDA support confirms the Cropper API creation endpoint, POST the field polygon as a GeoJSON Feature to that endpoint, capture the returned `cropper_ref`, and `UPDATE fields SET eosda_cropper_ref = $1 WHERE id = $2`.
+   - If the Cropper creation endpoint is still unknown, return `null` and let warm-up continue with scene discovery. Do not block field creation or scene caching on clipping.
 
-**Done when:** Calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref`, and a second call returns the same value without a new EOSDA POST. (End-to-end "create field → cropper appears" verification waits until Module 4.6, when `warmField` is wired into `POST /api/fields`.)
+> Note: EOSDA Field Management endpoints return a numeric `field_id`, but Render documents a separate optional `cropper_ref` from the Cropper API. Do not store Field Management `field_id` in `eosda_cropper_ref` unless EOSDA support confirms it is accepted as the Render `cropper_ref`. Keep `eosda_cropper_ref` as `TEXT` until the Cropper response type is known.
+
+**Done when:** If the Cropper API is confirmed, calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref`, and a second call returns the same value without a new EOSDA POST. If not confirmed, unit tests prove the function returns `null` without failing warm-up. (End-to-end "create field → cropper appears" verification waits until Module 4.6, when `warmField` is wired into `POST /api/fields`.)
 
 ### Module 4.3 — Search wrapper
 
 Depends on: 4.1.
 
 1. Add `services/eosda-search.ts` with `searchScenes({ geometry, from, to })`:
-   - POSTs to `/api/lms/search/v2/sentinel2` with `shape: <GeoJSON>`, `shapeRelation: 'CONTAINS'`, `cloudCoverage: { lte: 80 }`, date range.
-   - Returns a normalized list `{ viewId, sceneDate, cloudPercent, dataCoveragePercent, tmsTemplate }[]`.
+   - POSTs to `/api/lms/search/v2/sentinel2` with `intersection_validation: true`, `fields: ['date', 'sceneID', 'view_id', 'cloudCoverage', 'dataCoveragePercentage', 'tms']`, `limit`, `page`, `search.shape: <GeoJSON>`, `search.shapeRelation: 'CONTAINS'`, `search.cloudCoverage: { from: 0, to: 80 }`, date range, and `sort: { date: 'desc' }`.
+   - Supports a `limit` option so callers can request only the latest scene during create warm-up (`limit: 1`) or a broader page for the analysis timeline.
+   - Normalizes EOSDA's mixed response names: `sceneID → sceneId`, `view_id → viewId`, `date → sceneDate`, `cloudCoverage → cloudPercent`, `dataCoveragePercentage → dataCoveragePercent`, and `tms → tmsTemplate`.
 
 **Done when:** A unit test mocks `fetch` and asserts the mapping.
 
@@ -595,8 +600,10 @@ Depends on: 4.1.
 Depends on: 4.3, 1.2.
 
 1. Add `services/scene-cache.ts`:
-   - `upsertScenes(fieldId, scenes)` — `INSERT ... ON CONFLICT (field_id, view_id) DO UPDATE` for the columns that may change (cloud, data coverage, tms template).
+   - `upsertScenes(fieldId, scenes)` — `INSERT ... ON CONFLICT (field_id, view_id) DO UPDATE` for the columns that may change (scene id, cloud, data coverage, tms template, last-seen timestamp).
    - `listScenes(fieldId, dateRange?)` — read from `cached_scenes`, ordered by date desc.
+   - `getMostRecentScene(fieldId)` — reads the newest cached scene for default selection and smoke checks.
+2. If needed, add a small migration extending `cached_scenes` with `scene_id` and `last_seen_at`/`updated_at`. The initial Phase 1 schema already has the core `(field_id, view_id)` uniqueness; this timestamp is only for deciding when we last checked EOSDA if the latest scene has not changed.
 
 **Done when:** Inserts and re-inserts of the same `view_id` are idempotent.
 
@@ -605,13 +612,13 @@ Depends on: 4.3, 1.2.
 Depends on: 4.2, 4.3, 4.4.
 
 1. Create `services/field-warmup.ts` exporting `warmField(fieldId)`:
-   - Loads the field (by id) — exits silently if missing.
-   - `getOrCreateCropperRef(field)`.
-   - `searchScenes({ geometry: field.geometry, from: today-6mo, to: today })`.
-   - `upsertScenes(field.id, results)`.
-   - All errors logged with `{ fieldId, step }` and swallowed.
+   - Loads the field (by id) — log and return if missing.
+   - `getOrCreateCropperRef(field)`; this may return `null` until the Cropper API is confirmed.
+   - `searchLatestScene({ geometry: field.geometry })`, implemented as a latest-first Search over a configurable recent window, e.g. 90 days, with fallback expansion to 180/365 days if EOSDA returns no scenes.
+   - `upsertScenes(field.id, latestScene ? [latestScene] : [])`.
+   - Let unexpected errors reject. Module 4.6 owns the single `.catch(...)` that logs `{ fieldId }`, avoiding double-handling where the outer catch never fires.
 
-**Done when:** Calling `warmField(id)` from a scratch script populates `eosda_cropper_ref` and `cached_scenes`.
+**Done when:** Calling `warmField(id)` from a scratch script populates the newest available row in `cached_scenes` when EOSDA has data for the polygon. It also populates `eosda_cropper_ref` only if the Cropper API path is confirmed; otherwise it logs the skip and continues.
 
 ### Module 4.6 — Wire `warmField` into `POST /api/fields`
 
@@ -624,9 +631,11 @@ Depends on: 1.6, 4.5.
 
 ### Phase 4 exit criteria
 
-- `cached_scenes` populates within ~30 s of field creation.
+- `cached_scenes` has the newest available Sentinel-2 scene metadata within ~30 s of field creation when EOSDA has data for the polygon.
+- `eosda_cropper_ref` is either populated from a confirmed Cropper API flow or explicitly left `NULL` with a documented Path B fallback to scene-wide render tiles.
 - If EOSDA returns an error, the POST still succeeds and a structured log line records the failure.
 - `EOSDA_API_KEY` never appears in client-visible network requests.
+- No imagery tiles or `mt_stats` tasks are fetched during field creation.
 
 ---
 
@@ -660,7 +669,7 @@ Depends on: 5.1.
 
 Depends on: 5.1, 0.5 (shadcn `Sheet`/`Tabs`/`Tooltip`).
 
-1. Create `components/shell/sidebar-items.ts` with the array of items from plan.md §4.
+1. Create `components/shell/sidebar-items.ts` with the array of items from [`plan.md` Field Analysis Screen Anatomy](./plan.md#2-field-analysis-screen-anatomy).
 2. Create `components/shell/RightSidebar.tsx`:
    - Collapsed (~64 px) icon rail with tooltips.
    - Expanded (~300 px) shows the active item's pane.
@@ -715,19 +724,20 @@ Depends on: 5.1.
 Depends on: 4.4, 1.6.
 
 1. Add `routes/eosda.scenes.ts` with auth and ownership check (verify `auth.userId` owns `fieldId`).
-2. Body: `{ fieldId, dateRange? }` validated with zod from `packages/shared`.
-3. Behavior: read `cached_scenes` first; if empty for the requested range, run `searchScenes` and `upsertScenes`, then return.
-4. Response: `SceneDto[]` from shared.
+2. Body: `{ fieldId, dateRange?, forceRefresh? }` validated with zod from `packages/shared`.
+3. Behavior: read `cached_scenes` first; if empty or stale for the requested range (or `forceRefresh` is true), run EOSDA Search for that range and upsert the returned scene metadata, then return.
+4. Default `dateRange`: a configurable timeline window, e.g. the last 90 days. This is metadata-only and exists so the DateTimeline can show the available Sentinel-2 dates; it is not a tile/statistics prefetch.
+5. Response: `SceneDto[]` from shared, ordered newest first.
 
-**Done when:** Calling the route returns the same scenes that warm-up populated.
+**Done when:** Calling the route returns the latest warm-up scene immediately, refreshes/expands the timeline metadata when needed, and still returns no direct EOSDA URLs or API keys to the browser.
 
 ### Module 6.2 — `useEosdaScenes` hook
 
 Depends on: 6.1, 0.7.
 
 1. Create `hooks/useEosdaScenes.ts` wrapping `apiFetch('/api/eosda/scenes', ...)` via TanStack Query.
-2. `staleTime: 60 * 60 * 1000` (1 h) per plan.md §10.
-3. Auto-select the latest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset).
+2. `staleTime: 60 * 60 * 1000` (1 h) per [`plan.md` TanStack Query cache defaults](./plan.md#tanstack-query-cache-defaults).
+3. Auto-select the newest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset). If no low-cloud scene exists, select the newest scene and let the timeline mark it as cloudy.
 
 **Done when:** Mounting `/fields/:id` populates the DateTimeline with real scene dates and selects a default.
 
@@ -740,19 +750,22 @@ Depends on: 1.6, 4.4, 4.2.
    - zod-validate params: `band ∈ {'NDVI','EVI','NDWI'}`, `z/x/y` are integers, `viewId` non-empty string, `fieldId` UUID.
    - Verify `auth.userId` owns `fieldId`.
    - Verify `(fieldId, viewId)` exists in `cached_scenes` (otherwise 404 — prevents enumerating arbitrary scenes through our quota).
-   - Build upstream URL: `${EOSDA_BASE}/api/render/${viewId}/${band}/${z}/${x}/${y}` plus query: `cropper_ref` from the field if present, plus `api_key`.
+   - Decode `viewId` from the query param before embedding it in the upstream path.
+   - Build upstream URL: `${EOSDA_BASE}/api/render/${viewId}/${band}/${z}/${x}/${y}` where `band` is the documented Sentinel-2 alias (`NDVI`, `EVI`, or `NDWI`), not a user-supplied arbitrary formula.
+   - Add query params: `CALIBRATE=1`, `mimetype=image/png`, and `cropper_ref` from the field if present. Use `COLORMAP`/`MIN_MAX` as visualization params when live testing shows an alias returns grayscale or needs explicit contrast (`NDVI`/`EVI`: `RdYlGn`, `-1,1`; `NDWI`: `Blues`, `-1,1`).
+   - Send `EOSDA_API_KEY` via `x-api-key` header. Only use `api_key` query fallback if a live Render test proves header auth is rejected, and never log that full URL.
    - Stream the upstream PNG response back to the client.
    - Set `Cache-Control: private, max-age=86400`.
 2. Reject any path that contains `..` or unexpected characters in `viewId` (defense in depth even though it's a query param).
 
-**Done when:** A direct browser GET (with the Clerk JWT) returns a PNG tile; without ownership returns 403/404.
+**Done when:** A direct browser GET (with the Clerk JWT) returns a PNG tile; without ownership returns 403/404; a live smoke confirms header auth and alias rendering (`NDVI`) work before closing the module.
 
 ### Module 6.4 — `NdviLayer` (Layer 4)
 
 Depends on: 2.3, 2.4 (`isStyleReady`), 6.2, 6.3, 3.1.
 
 1. **Authenticated tile loading (critical).** MapLibre fetches raster tiles itself, not via `apiFetch`, so it does not pick up the Clerk JWT or the `VITE_API_BASE_URL` prefix automatically. Two pieces are required:
-   - **Absolute tile URL.** Build the template against `VITE_API_BASE_URL`, e.g. `${env.VITE_API_BASE_URL}/api/eosda/render/{z}/{x}/{y}?fieldId=...&viewId=...&band=...`. Never rely on a relative `/api/...` URL — in dev that resolves to `http://localhost:5173` (Vite), not the Fastify API on port 8080.
+    - **Absolute tile URL.** Build the template against `VITE_API_BASE_URL`, e.g. `${env.VITE_API_BASE_URL}/api/eosda/render/{z}/{x}/{y}?fieldId=...&viewId=${encodeURIComponent(viewId)}&band=...`. Never rely on a relative `/api/...` URL — in dev that resolves to `http://localhost:5173` (Vite), not the Fastify API on port 8080. Only `viewId` is URL-encoded; MapLibre must keep `{z}/{x}/{y}` tokens intact.
    - **`transformRequest` on the map.** Configure MapLibre's `transformRequest(url, resourceType)` so that, for any URL beginning with `${env.VITE_API_BASE_URL}/api/eosda/render/`, it adds `headers: { Authorization: \`Bearer ${token}\` }` using the current Clerk session token. Wire `transformRequest` once when the map is created (in `useMapInstance`); read the latest token via a ref so it stays fresh after Clerk refreshes.
 2. Create `components/map/NdviLayer.tsx`:
    - **Waits for `isStyleReady`** before adding sources/layers (same reason as `FieldLayer`).
@@ -773,10 +786,12 @@ Depends on: 5.5, 6.2, 6.4.
 
 1. Replace the visual stub `DateTimeline` with a data-bound version:
    - Receives scenes from `useEosdaScenes`.
-   - Renders one chip per date, with a cloud icon when `cloudPercent > 50`.
+   - Renders one chip per available Sentinel-2 acquisition date from the EOSDA Search response, not a fixed/generated date sequence.
+   - If multiple scenes share the same date, groups them and uses the best candidate for that chip (lowest cloud, then highest data coverage).
+   - Shows a cloud icon when `cloudPercent > 50`.
    - Hovering a chip calls a tooltip with cloud + data coverage.
    - Clicking writes `viewId` to `useUiStore.selectedViewId`.
-2. Hide chips with `cloudPercent > 50` behind a "show cloudy" toggle that defaults to off (matches `CloudHiddenToast` in plan.md §4).
+2. Hide chips with `cloudPercent > 50` behind a "show cloudy" toggle that defaults to off (matches `CloudHiddenToast` in [`plan.md` Field Analysis Screen Anatomy](./plan.md#2-field-analysis-screen-anatomy)).
 
 **Done when:** Clicking different dates updates the NDVI raster on the map.
 
@@ -791,7 +806,7 @@ Depends on: 5.5, 6.4.
 
 ### Phase 6 exit criteria
 
-- NDVI tiles visible and field-clipped via `cropper_ref`.
+- NDVI tiles visible. They are field-clipped when `cropper_ref` is available; otherwise the accepted v2 fallback is scene-wide tiles under the field outline.
 - DateTimeline + IndexSwitcher drive the raster.
 - Network panel: no direct EOSDA calls from the browser; render proxy returns 200 PNGs.
 
@@ -799,7 +814,7 @@ Depends on: 5.5, 6.4.
 
 ## Phase 7 — Statistics + Sample pane + Chart tab
 
-**Goal:** The Sample sidebar pane shows real NDVI statistics (mean/p10/p90/median + cloud/data-coverage confidence). The Chart tab plots the mean NDVI across cached scenes.
+**Goal:** The Sample sidebar pane shows real NDVI statistics (Mean/p10/p90/median + cloud/data-coverage confidence). The Chart tab plots Mean NDVI across cached scenes.
 
 **Phase entry:** Phase 6 complete.
 
@@ -808,10 +823,12 @@ Depends on: 5.5, 6.4.
 Depends on: 1.6, 4.4, 4.1.
 
 1. Add `routes/eosda.stats.ts`:
-   - Body: `{ fieldId, indexes?: ('NDVI'|'EVI'|'NDWI')[], dateRange? }` (default indexes `['NDVI']`, max 3 per plan.md gotcha).
+   - Body: `{ fieldId, indexes?: ('NDVI'|'EVI'|'NDWI')[], dateRange? }` (default indexes `['NDVI']`, max 3 per [`plan.md` EOSDA gotchas](./plan.md#eosda-specific)).
    - Auth + ownership check on `fieldId`.
    - Cache-first: read `cached_ndvi_stats` for `(fieldId, viewId, index)` across the listed `view_ids` (the route may use the cached scenes table to know which `view_ids` to consider).
-   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the polygon + date range, **poll** until completion (with a sane max wait + backoff), then upsert results to `cached_ndvi_stats` and return.
+   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the polygon + date range, `sensors: ['sentinel2']`, a unique `reference`, and `cloud_masking_level: 1`.
+   - Poll `GET /api/gdw/api/<task_id>` every ~2s until completion. Use the returned `task_timeout` as the upstream cap, but cap the HTTP request wait to a user-safe maximum (60s for v2); on timeout return `504 { error: 'STATS_TIMEOUT', taskId }` so the frontend can retry instead of hanging.
+   - Normalize the nested response shape: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].average`/`median`/`p10`/`p90`/etc. Map `average` to the app's `mean` column/DTO field before upserting to `cached_ndvi_stats`.
 2. Add `services/stats-cache.ts` to encapsulate the cache reads/writes (mirrors `scene-cache.ts`).
 
 **Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits.
@@ -823,6 +840,7 @@ Depends on: 7.1, 0.7.
 1. Create `hooks/useEosdaStats.ts`:
    - `useEosdaStats(fieldId, indexes)` returns the full series for the field.
    - `staleTime: 60 * 60 * 1000`.
+   - On a 504 `STATS_TIMEOUT`, retry once after 10s and show a non-blocking "Stats are still computing" toast if the retry also times out.
    - The Sample pane filters by `selectedViewId` + `selectedIndex` client-side to keep API calls minimal.
 
 **Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes.
@@ -832,7 +850,7 @@ Depends on: 7.1, 0.7.
 Depends on: 5.3, 7.2.
 
 1. Build `components/shell/sample/SamplePane.tsx`:
-   - Big number: mean NDVI for the selected `(viewId, index)`. Color-coded: red <0.3, yellow 0.3–0.5, green >0.5.
+    - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color-coded: red <0.3, yellow 0.3–0.5, green >0.5.
    - Smaller line: p10 / p90 / median.
    - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
    - Mini histogram from the bucketed values returned by EOSDA (skip if not available — render a textual fallback).
@@ -845,7 +863,7 @@ Depends on: 5.3, 7.2.
 Depends on: 5.4, 7.2.
 
 1. Install `recharts`.
-2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = mean NDVI, dot color matching the same red/yellow/green thresholds. De-emphasize (lower opacity) points with cloud > 50% or low data coverage.
+2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = Mean NDVI, dot color matching the same red/yellow/green thresholds. De-emphasize (lower opacity) points with cloud > 50% or low data coverage.
 3. Replace the BottomBar Chart tab placeholder with `NdviChart`.
 
 **Done when:** Switching the BottomBar to the Chart tab shows the line for the field.
@@ -860,7 +878,7 @@ Depends on: 5.4, 7.2.
 
 ## Phase 8 — Polish, tests, README
 
-**Goal:** The prototype passes the end-to-end checklist in plan.md §16, has the smoke tests committed, and is reproducible cold from a `pnpm install`.
+**Goal:** The prototype passes the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist), has the smoke tests committed, and is reproducible cold from a `pnpm install`.
 
 ### Module 8.1 — Loading + error UX
 
@@ -897,7 +915,7 @@ Depends on: 1.9, 6.1, 7.1.
 
 Depends on: 8.1, 8.2.
 
-1. Walk through plan.md §16 demo checklist for the five test fields. Capture any timing surprises.
+1. Walk through the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist) for the five test fields. Capture any timing surprises.
 2. Write `README.md`: prerequisites (Node 20+, pnpm 9+, Docker), pre-flight account links, `pnpm install && docker compose up -d && pnpm db:migrate && pnpm dev`, env file expectations, troubleshooting (Clerk redirect mismatch, EOSDA quota messages, MapLibre StrictMode warnings).
 3. Add a top-level `pnpm db:migrate` script that delegates to `apps/api`'s drizzle-kit.
 
@@ -905,7 +923,7 @@ Depends on: 8.1, 8.2.
 
 ### Phase 8 exit criteria — also the project exit criteria
 
-- All checklist items in plan.md §16 pass.
+- All checklist items in the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist) pass.
 - `pnpm run ci` (Biome), `pnpm test`, and `pnpm build` are green.
 - README is sufficient for cold-start.
 
@@ -918,6 +936,9 @@ Depends on: 8.1, 8.2.
 | 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to drawing validation | Phase 3 (Module 3.2) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. Module 3.2 must add Terra Draw `ValidateNotSelfIntersecting` or an equivalent shared segment-intersection guard so the user gets instant feedback while drawing instead of a 400 from the API. |
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
+| 4.2 | Confirm EOSDA Cropper API endpoint/request format for creating a Render `cropper_ref` | Before requiring field-clipped NDVI tiles | Path B is accepted for v2: leave `eosda_cropper_ref` NULL and render scene-wide tiles under the field outline. Do not substitute Field Management `field_id` unless EOSDA confirms it is accepted by Render as `cropper_ref`. |
+| 4.3 | Live-test EOSDA Search edge cases | Phase 4 | Confirm no-scene behavior (`results: []` vs error) and keep `sentinel2` as the dataset id unless a live request requires `sentinel2l2a`. |
+| 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale, add explicit `COLORMAP`/`MIN_MAX`. |
 
 ---
 

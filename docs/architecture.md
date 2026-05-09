@@ -2,7 +2,7 @@
 
 > Technical architecture, tech stack, database schema, API surface, and component design for the viz-crop crop monitoring application.
 
-**Document version:** 2.1
+**Document version:** 2.2
 **Last updated:** May 2026
 **Companion doc:** [plan.md](./plan.md) — Implementation phases, user flows, and project management.
 
@@ -76,7 +76,7 @@ viz-crop is a single-page React web app backed by a Node.js (Fastify) proxy and 
 │  • /api/eosda/stats         async task proxy → EOSDA Statistics     │
 │  • /api/eosda/render/:z/:x/:y tile proxy (24 h Cache-Control)       │
 │  • Clerk JWT verification on every /api/* route                     │
-│  • field-warmup service: async EOSDA Search on field create         │
+│  • field-warmup service: latest Sentinel-2 metadata on field create │
 └─────────────────────────────────────────────────────────────────────┘
               │                                       │
               ↓                                       ↓
@@ -93,7 +93,7 @@ viz-crop is a single-page React web app backed by a Node.js (Fastify) proxy and 
                                       ┌───────────────────────────────┐
                                       │  ArcGIS Location Platform     │
                                       │  ─────────────────────────    │
-                                      │  • arcgis/imagery basemap     │
+                                      │  • arcgis/imagery/standard     │
                                       │  • Direct from browser        │
                                       │  • Free tier sufficient       │
                                       └───────────────────────────────┘
@@ -103,7 +103,7 @@ viz-crop is a single-page React web app backed by a Node.js (Fastify) proxy and 
 
 - **Thin Fastify proxy + DB** — keeps EOSDA key server-side, persists fields, and centralises caching against the EOSDA rate limit.
 - **Drizzle + PostGIS** — TypeScript inference for normal columns and native `geometry` support; use explicit SQL helpers for GeoJSON polygon insert/read paths.
-- **Async warm-up, not job queue** — at prototype scale BullMQ/Redis is overkill. `void warmField(id).catch(...)` after the insert is enough, as long as failures are logged with `fieldId`.
+- **Async warm-up, not job queue** — at prototype scale BullMQ/Redis is overkill. `void warmField(id).catch(...)` after the insert is enough, as long as failures are logged with `fieldId`. Warm-up should cache only the latest available Sentinel-2 scene metadata and a Render `cropper_ref` when EOSDA's Cropper creation flow is confirmed; imagery tiles and statistics remain on-demand.
 - **Direct ArcGIS calls from browser** — Esri keys are domain-restricted; designed for browser exposure.
 
 ---
@@ -112,10 +112,10 @@ viz-crop is a single-page React web app backed by a Node.js (Fastify) proxy and 
 
 | # | Layer | Source | Loaded when | Library |
 |---|---|---|---|---|
-| 1 | Satellite imagery | ArcGIS `arcgis/imagery` (Maxar Vivid) | App start | MapLibre + `@esri/maplibre-arcgis` |
+| 1 | Satellite imagery | ArcGIS `arcgis/imagery/standard` (Maxar Vivid + labels) | App start | MapLibre + `@esri/maplibre-arcgis` |
 | 2 | Roads + place labels | ArcGIS basemap symbol layers when present; verify with the chosen imagery style | App start | same as Layer 1 |
 | 3 | **Field polygon (user-drawn)** | terra-draw → MapLibre `geojson` source | Create flow + Analysis screen | terra-draw + adapter |
-| 4 | **EOSDA NDVI overlay** | EOSDA Render API XYZ tiles via Fastify, clipped with `cropper_ref` when available | Analysis screen, *after* polygon exists | MapLibre `raster` source |
+| 4 | **EOSDA NDVI overlay** | EOSDA Render API XYZ tiles via Fastify, clipped with `cropper_ref` when available; otherwise scene-wide under the field outline | Analysis screen, *after* polygon exists | MapLibre `raster` source |
 
 Stacking order from bottom to top in MapLibre:
 
@@ -406,9 +406,9 @@ All `/api/*` routes (except `/api/health`) require Clerk Fastify auth (`clerkPlu
 | GET  | `/api/fields/:id` | – | Single field (404 if not yours) |
 | PATCH| `/api/fields/:id` | `UpdateFieldDto` | Rename / edit metadata |
 | DELETE| `/api/fields/:id` | – | Hard delete; cascades cache |
-| POST | `/api/eosda/scenes` | `{fieldId, dateRange?}` | Cache-first against `cached_scenes`; on miss, EOSDA Search → upsert |
-| POST | `/api/eosda/stats` | `{fieldId, indexes?: ['NDVI'|'EVI'|'NDWI'], dateRange?}` | Cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task, poll, upsert |
-| GET  | `/api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` | query params | Tile proxy, validates ownership + band allowlist, adds that field's `cropper_ref`, sets `Cache-Control: private, max-age=86400` |
+| POST | `/api/eosda/scenes` | `{fieldId, dateRange?, forceRefresh?}` | Cache-first against `cached_scenes`; on miss/stale/force-refresh, EOSDA Search → upsert available Sentinel-2 scene dates/view IDs |
+| POST | `/api/eosda/stats` | `{fieldId, indexes?: ['NDVI' \| 'EVI' \| 'NDWI'], dateRange?}` | Cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task, poll up to `task_timeout`, map EOSDA `average` to app `mean`, upsert |
+| GET  | `/api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` | query params | Tile proxy, validates ownership + band alias allowlist (`NDVI`/`EVI`/`NDWI`), adds that field's `cropper_ref` when present, sets `Cache-Control: private, max-age=86400` |
 
 Do not expose raw EOSDA URLs to the browser. The render proxy must build the upstream URL server-side because `view_id` contains slashes and the EOSDA API key is a paid secret.
 
@@ -487,7 +487,7 @@ User                Web                     Fastify API           Postgres      
  │                   ├────────────────────────>│ INSERT fields      │              │                │
  │                   │                         ├───────────────────>│              │                │
  │                   │                         │<── id ─────────────┤              │                │
- │                   │                         │ void warmField(id) ────────────────│ cropper + search│
+ │                   │                         │ void warmField(id) ────────────────│ search (+ optional cropper)│
  │                   │<──── { id } ────────────┤                    │              │                │
  │                   │ navigate /fields/:id    │                    │<── upsert ───┤<── view_ids ───┤
  │                   │ Render AnalysisLayout   │                    │              │                │
@@ -498,7 +498,7 @@ User                Web                     Fastify API           Postgres      
  │                   │ latest non-cloudy scene │                    │              │                │
  │                   │ Add NDVI raster source: │                    │              │                │
  │                   │   /api/eosda/render/z/x/y?fieldId=...&viewId=...&band=NDVI  │                │
- │                   ├────────────────────────>│ proxy tile + cropper_ref → EOSDA   │                │
+ │                   ├────────────────────────>│ proxy tile + optional cropper_ref → EOSDA │          │
  │                   │<──── PNG tiles ─────────┤                    │<── PNG ──────┤                │
  │                   │ POST /api/eosda/stats   ├────────────────────│              │                │
  │                   │                         │ cache miss → create/poll mt_stats │                │
@@ -510,9 +510,9 @@ User                Web                     Fastify API           Postgres      
 | Data | Cache layer | TTL | Why |
 |---|---|---|---|
 | ArcGIS basemap tiles | Browser HTTP cache | (Esri sets) | Maxar imagery rarely changes |
-| EOSDA scene list | Postgres `cached_scenes` + TanStack Query 1 h | per-field | Scenes are stable once published |
-| EOSDA cropper refs | `fields.eosda_cropper_ref` | per-field geometry | Required for clipped render tiles |
-| EOSDA NDVI tiles | Browser HTTP cache via private Fastify `Cache-Control` | 24 h | Render output is deterministic per `fieldId/viewId/band/z/x/y/cropper_ref` |
+| EOSDA scene list | Postgres `cached_scenes` + TanStack Query 1 h | per-field/date window | Search results are the source of available timeline dates; refresh with a short TTL or explicit user action so new Sentinel-2 scenes can appear |
+| EOSDA cropper refs | `fields.eosda_cropper_ref` | per-field geometry | Optional; required only for clipped render tiles once EOSDA confirms the Cropper creation flow |
+| EOSDA NDVI tiles | Browser HTTP cache via private Fastify `Cache-Control` | 24 h | Render output is deterministic per `fieldId/viewId/band/z/x/y/cropper_ref-or-none` |
 | EOSDA Stats | Postgres `cached_ndvi_stats` + TanStack Query 1 h | per-(field, viewId, index) | Stable after async task completes |
 | Fields | TanStack Query | 5 min | Refetch on focus |
 

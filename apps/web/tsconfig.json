@@ -4,7 +4,10 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@esri/maplibre-arcgis": [
+        "./node_modules/@esri/maplibre-arcgis/dist/esm/types/src/MaplibreArcGIS"
+      ]
     },
     "noEmit": true,
     "tsBuildInfoFile": "node_modules/.cache/tsc/web.tsbuildinfo"

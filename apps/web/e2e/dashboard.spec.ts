@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 /**
- * Phase 0 + Phase 1 UI/UX smoke spec.
+ * Phase 0 + Phase 1 + Phase 2 UI/UX smoke spec.
  *
  * Drives the custom Clerk-Core-3 sign-in form (apps/web/src/routes/sign-in.tsx),
  * exercises the dashboard chrome (header, logo, UserButton), the empty-state OR
- * field-list render path, and the placeholder routes that Phase 2/3 will replace.
+ * field-list render path, the Phase 2 `/fields/new` map shell (CreateLayout +
+ * MapView + ArcGIS basemap), and the field-detail placeholder route that Phase
+ * 3 will replace.
  *
  * Credentials come from env vars so they aren't hardcoded; defaults match what
  * the user provided. Override with PW_USER_EMAIL / PW_USER_PASSWORD.
@@ -127,13 +129,18 @@ test.describe('Phase 0/1 UI smoke', () => {
       description: `dashboard ${isEmpty ? 'empty' : `populated (${cardCount} cards)`}`,
     });
 
-    // --- /fields/new placeholder ---
+    // --- /fields/new — Phase 2 map shell + Phase 3 form placeholder ---
     await page
       .getByRole('link', { name: /add field/i })
       .first()
       .click();
     await expect(page).toHaveURL(/\/fields\/new$/);
-    await expect(page.getByRole('heading', { name: /new field placeholder/i })).toBeVisible();
+    // CreateLayout's form-slot heading (form itself lands in Phase 3).
+    await expect(page.getByRole('heading', { name: /^new field$/i })).toBeVisible();
+    // Phase 2: MapLibre must mount its canvas inside the map slot. This guards
+    // against silent regressions where the basemap fails to load (missing
+    // VITE_ESRI_API_KEY, ArcGIS plugin error, container 0×0 sizing, etc.).
+    await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({ timeout: 15_000 });
     await page.screenshot({
       path: path.join(SCREENSHOTS_DIR, '03-fields-new.png'),
       fullPage: true,
