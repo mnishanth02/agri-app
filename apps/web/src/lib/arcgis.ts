@@ -53,8 +53,8 @@
  *    to lose when the newer `setStyle` finally runs. Two guards prevent
  *    this:
  *      - A per-map `latestBasemapOp` symbol identifies the newest in-flight
- *        operation; listeners from older ops detach silently when their
- *        symbol no longer matches.
+ *        operation; listeners from older ops reject when their symbol no
+ *        longer matches.
  *      - A per-op `myStyleApplied` flag is only flipped when *our*
  *        `applyTo` runs; until then, any `style.load` we receive must
  *        belong to a different op and we ignore it.
@@ -107,9 +107,8 @@ export function applyArcgisImageryWithLabels(
 
     function onStyleLoad() {
       // Stale: a newer applyArcgisImageryWithLabels call superseded us.
-      // Detach silently — the newer op owns this map's basemap lifecycle now.
       if (latestBasemapOp.get(map) !== myOp) {
-        map.off('style.load', onStyleLoad);
+        fail(new DOMException('superseded', 'AbortError'));
         return;
       }
       // Our `applyTo` hasn't fired yet — this `style.load` belongs to a

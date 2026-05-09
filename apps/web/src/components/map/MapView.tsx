@@ -73,6 +73,13 @@ export function MapView({ center, zoom, children, style, className }: MapViewPro
     center,
     zoom,
   });
+  const safeStyle = { ...style };
+  delete safeStyle.position;
+  delete safeStyle.top;
+  delete safeStyle.right;
+  delete safeStyle.bottom;
+  delete safeStyle.left;
+  delete safeStyle.inset;
 
   const contextValue = useMemo<MapContextValue>(
     () => ({ map, isReady, isStyleReady, styleEpoch }),
@@ -81,7 +88,7 @@ export function MapView({ center, zoom, children, style, className }: MapViewPro
 
   return (
     <MapContext.Provider value={contextValue}>
-      <div className={className} style={{ position: 'relative', ...style }}>
+      <div className={className} style={{ ...safeStyle, position: 'relative' }}>
         <div ref={containerRef} className="h-full w-full" />
         {children}
       </div>

@@ -58,6 +58,7 @@ export function BasemapLayer() {
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         console.error('[BasemapLayer] failed to apply ArcGIS basemap', err);
+        markStyleReady(map, token);
       });
 
     return () => {

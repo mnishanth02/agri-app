@@ -407,7 +407,7 @@ All `/api/*` routes (except `/api/health`) require Clerk Fastify auth (`clerkPlu
 | PATCH| `/api/fields/:id` | `UpdateFieldDto` | Rename / edit metadata |
 | DELETE| `/api/fields/:id` | – | Hard delete; cascades cache |
 | POST | `/api/eosda/scenes` | `{fieldId, dateRange?, forceRefresh?}` | Cache-first against `cached_scenes`; on miss/stale/force-refresh, EOSDA Search → upsert available Sentinel-2 scene dates/view IDs |
-| POST | `/api/eosda/stats` | `{fieldId, indexes?: ['NDVI'|'EVI'|'NDWI'], dateRange?}` | Cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task, poll up to `task_timeout`, map EOSDA `average` to app `mean`, upsert |
+| POST | `/api/eosda/stats` | `{fieldId, indexes?: ['NDVI' \| 'EVI' \| 'NDWI'], dateRange?}` | Cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task, poll up to `task_timeout`, map EOSDA `average` to app `mean`, upsert |
 | GET  | `/api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` | query params | Tile proxy, validates ownership + band alias allowlist (`NDVI`/`EVI`/`NDWI`), adds that field's `cropper_ref` when present, sets `Cache-Control: private, max-age=86400` |
 
 Do not expose raw EOSDA URLs to the browser. The render proxy must build the upstream URL server-side because `view_id` contains slashes and the EOSDA API key is a paid secret.

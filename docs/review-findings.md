@@ -281,10 +281,10 @@ Content-Type: application/json
 { "id": 12345, "area": 2.3 }
 ```
 
-**Critical correction:** The response `id` is a **number** (integer), not a string/UUID. The `fields` table's `eosda_cropper_ref` column should store this as `INTEGER` or `BIGINT`, not `TEXT`. Check `db/schema.ts` and correct if it's declared as text.
+**Clarification:** The Field Management response `id` is a **number** (integer), not a string/UUID, but Render documents a separate optional `cropper_ref`. Keep the `fields.eosda_cropper_ref` column in `db/schema.ts` as `TEXT` until EOSDA confirms the Cropper response type and whether this Field Management `id` can be accepted as Render `cropper_ref`; consider migrating to `INTEGER`/`BIGINT` only after that confirmation.
 
 **Other field management endpoints:**
-```
+```text
 GET    /field-management/<field_id>     # get field details
 PATCH  /field-management/<field_id>     # update field metadata
 DELETE /field-management/<field_id>     # delete field
@@ -524,7 +524,7 @@ Module 4.5 says `warmField` swallows all errors internally. Module 4.6 adds an o
 | A1 | Update ArcGIS style name to `'arcgis/imagery/standard'` | `plan.md` Module 2.4 | Medium |
 | A2 | Add NDVI/EVI/NDWI band formula translation table to Module 6.3 | `plan.md`, `implementation.md` | **High** |
 | A3 | Add `COLORMAP` + `MIN_MAX` + `CALIBRATE` render params to Module 6.3 | `plan.md`, `implementation.md` | **High** |
-| A4 | Clarify `eosda_cropper_ref` schema column type: INTEGER (not TEXT) | `implementation.md` Module 4.2 | **High** |
+| A4 | Keep `eosda_cropper_ref` as `TEXT` until EOSDA confirms the Cropper response type; revisit INTEGER/BIGINT only if Field Management `id` is accepted as Render `cropper_ref` | `implementation.md` Module 4.2 | **High** |
 | A5 | Add `cropper_ref` in render — "confirm with EOSDA or skip for v2" decision note | `plan.md`, `implementation.md` | **High** |
 | A6 | Fix all `§N` cross-references in implementation.md to named anchors | `implementation.md` | Medium |
 | A7 | Add stale-time defaults table to plan.md | `plan.md` | Medium |
@@ -538,7 +538,7 @@ Module 4.5 says `warmField` swallows all errors internally. Module 4.6 adds an o
 | B2 | Confirm EOSDA response field is `average` (not `mean`) — update Sample pane label | Dev (update Module 7.3) |
 | B3 | Add `cloud_masking_level: 1` to stats request body in Module 7.1 | Dev |
 | B4 | Add `task_timeout`-based polling cap to Module 7.1 | Dev |
-| B5 | Update `eosda_cropper_ref` column in `db/schema.ts` to `integer` type if currently `text` | Dev |
+| B5 | Leave `eosda_cropper_ref` as `text` unless EOSDA confirms Field Management `id` can serve as Render `cropper_ref`; then migrate deliberately | Dev |
 
 ### Documentation cleanup (can batch)
 
