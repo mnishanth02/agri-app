@@ -9,7 +9,10 @@
     "routes:generate": "tsr generate",
     "build": "tsr generate && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsr generate && tsc --noEmit"
+    "typecheck": "tsr generate && tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@clerk/react": "6.6.1",
@@ -32,6 +35,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/react-query-devtools": "5.100.9",
     "@tanstack/react-router-devtools": "1.166.13",
