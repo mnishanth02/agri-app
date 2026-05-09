@@ -21,15 +21,20 @@
  *   Phase 1 (≤ a few hundred fields per user); revisit if list size grows.
  *
  * - **Update strategy.** PATCH returns the full updated row. We
- *   `setQueryData(detail, updated)` for instant UI refresh AND invalidate
- *   only the list — invalidating the detail key on top would cancel the
- *   `setQueryData` benefit by forcing an immediate refetch.
+ *   `setQueryData(detail, updated)`, also patch the matching row inside the
+ *   cached list so the dashboard re-renders synchronously, AND invalidate the
+ *   list to reconcile with the server. The list `setQueryData` is the
+ *   important part — without it, a successful rename closes the dialog with
+ *   the old name still showing until the background refetch lands (caught by
+ *   gpt-5.5 on Module 1.8 review).
  *
  * - **Delete strategy.** DELETE returns 204. We `removeQueries(detail)` so
  *   the cache doesn't serve stale data if the user navigates back to the
- *   deleted UUID, then invalidate the list. Callers are responsible for
- *   navigating away from a detail page they just deleted (otherwise the
- *   active detail query will refetch and 404 — by design).
+ *   deleted UUID, filter the deleted row out of the cached list synchronously
+ *   so the dashboard card vanishes the moment the confirm dialog closes, and
+ *   invalidate the list to reconcile. Callers are responsible for navigating
+ *   away from a detail page they just deleted (otherwise the active detail
+ *   query will refetch and 404 — by design).
  *
  * - **Abort signals.** Every read query forwards TanStack's `signal` into
  *   `apiFetch` so unmounted / superseded queries don't keep the network
@@ -167,6 +172,9 @@ export function useUpdateField(id: string): UseMutationResult<FieldDto, Error, U
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(fieldsKeys.detail(id), updated);
+      queryClient.setQueryData<FieldDto[]>(fieldsKeys.list(), (old) =>
+        old?.map((field) => (field.id === updated.id ? updated : field)),
+      );
       void queryClient.invalidateQueries({ queryKey: fieldsKeys.list() });
     },
   });
@@ -177,9 +185,9 @@ export function useUpdateField(id: string): UseMutationResult<FieldDto, Error, U
  * caches (cached_scenes / cached_ndvi_stats).
  *
  * On success we drop the detail entry from cache so a stale row can't be
- * served if the user navigates back to the deleted UUID, then refresh
- * the list. Callers are responsible for navigating away from a detail
- * page they just deleted.
+ * served if the user navigates back to the deleted UUID, filter the deleted
+ * row out of the cached list synchronously, and refresh the list. Callers
+ * are responsible for navigating away from a detail page they just deleted.
  */
 export function useDeleteField(id: string): UseMutationResult<void, Error, void> {
   const queryClient = useQueryClient();
@@ -189,6 +197,9 @@ export function useDeleteField(id: string): UseMutationResult<void, Error, void>
     },
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: fieldsKeys.detail(id) });
+      queryClient.setQueryData<FieldDto[]>(fieldsKeys.list(), (old) =>
+        old?.filter((field) => field.id !== id),
+      );
       void queryClient.invalidateQueries({ queryKey: fieldsKeys.list() });
     },
   });

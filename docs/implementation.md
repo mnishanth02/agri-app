@@ -320,9 +320,9 @@ Depends on: 0.7, 0.8, 1.6.
 
 **Done when:** A scratch component listing `useFieldList().data` renders the seeded user's fields.
 
-> ⚠️ PENDING: Live signed-in browser smoke deferred — Module 1.8 will rewrite `routes/_auth/index.tsx` with the real `EmptyState` / `FieldList` / `FieldCard` and naturally exercise this hook end-to-end. Hook compiles (typecheck ✅), bundles (vite build ✅), is reviewed clean by gpt-5.5, and the underlying API contract was already proven in Module 1.6's 24/24 signed-in smoke with real Clerk JWTs.
+> ⚠️ PENDING: Live signed-in browser smoke deferred — Module 1.8 will rewrite `routes/_auth/index.tsx` with the real `EmptyState` / `FieldList` / `FieldCard` and naturally exercise this hook end-to-end. Hook compiles (typecheck ✅), bundles (vite build ✅), is reviewed clean by gpt-5.5, and the underlying API contract was already proven in Module 1.6's 24/24 signed-in smoke with real Clerk JWTs. (**Update 2026-05-09:** Module 1.8 has shipped and exercises this hook end-to-end via `useFieldList`, `useUpdateField`, and `useDeleteField`. Visual smoke entry now consolidated under Module 1.8.)
 
-### Module 1.8 — Dashboard UI
+### Module 1.8 — Dashboard UI ✅ (completed 2026-05-09)
 
 Depends on: 1.7, 0.5 (shadcn).
 
@@ -336,6 +336,10 @@ Depends on: 1.7, 0.5 (shadcn).
 - Empty state appears for a fresh user.
 - After creating a field via curl, refreshing the dashboard shows the card with the correct hectares.
 - Delete from the kebab menu removes the card after confirm.
+
+> ⚠️ PENDING: Live signed-in browser smoke deferred to user manual verification — automated Clerk OTP is out of scope. Implementation passes typecheck (3/3 ✅), `vite build` ✅, biome ✅, gpt-5.5 review (1 finding applied — see commit message), and both dev servers boot cleanly (API `/api/health` 200, `/api/fields` 401 unauth, web `/` 200). The Module 1.7 deferred-smoke entry is superseded by this one.
+
+> ⚠️ DEVIATION: Step 1 (`layouts/DashboardLayout.tsx`) was intentionally skipped — `apps/web/src/routes/_auth/route.tsx::AuthLayout` already provides the chrome + sign-out via `<UserButton>`. The page-level shell is inlined in the dashboard route. A separate file would be empty duplication for one consumer. Confirmed sound by both pre-implementation rubber-duck and gpt-5.5 review.
 
 ### Module 1.9 — Auth/ownership smoke tests for the API
 
@@ -895,8 +899,8 @@ Depends on: 8.1, 8.2.
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
 | 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to `polygonGeoJsonSchema` | Phase 3 (drawing tool) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. A client-side guard would give the user instant feedback while drawing instead of a 400 from the API. Likely uses `@turf/boolean-valid` or a small in-house segment-intersection check. |
-| 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Module 1.8 (dashboard rename UX) or whenever the dashboard needs clear-field UX | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Today users can set those fields but can't blank them out via the API. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
-| 1.7 | Run signed-in browser smoke that visually confirms `useFieldList().data` renders | Module 1.8 (dashboard rewrite naturally exercises the hook) | Spec's "Done when" calls for a visual smoke. Deferred because Module 1.8 rewrites `routes/_auth/index.tsx` with the real dashboard and will surface any runtime hook integration issue immediately. Module 1.6 already proved the API contract end-to-end with real Clerk JWTs (24/24 smoke). |
+| 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
+| 1.8 | Run signed-in browser smoke that visually confirms empty state, field card, kebab → rename, and kebab → delete with confirm | User manual verification at `http://localhost:5173` after `pnpm dev` | Automated Clerk OTP sign-in is out of scope (test users have no password). Module 1.6 already proved the full CRUD API contract end-to-end with real Clerk JWTs (24/24 smoke). Module 1.8 passes typecheck/biome/vite build, dev servers boot cleanly, and gpt-5.5 review found no remaining issues after the cache-sync fix was applied. Supersedes the previous 1.7 deferred-smoke entry. |
 
 ---
 
