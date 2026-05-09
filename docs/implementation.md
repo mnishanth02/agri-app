@@ -367,7 +367,7 @@ Depends on: 1.6.
 
 ---
 
-## Phase 2 — Map foundation + basemap (Layers 1+2)
+## Phase 2 — Map foundation + basemap (Layers 1+2) ✅ (completed 2026-05-09)
 
 **Goal:** `/fields/new` renders a full satellite map of Karnataka with road and place labels, no flicker, and no duplicate live MapLibre instances/canvases/listeners after React StrictMode's dev-only extra setup/cleanup cycle settles.
 
