@@ -14,9 +14,18 @@
  * canvas gets unmounted, etc.). MapView therefore renders:
  *
  *   <div [user style/className] style="position: relative">      ← positioning context
- *     <div ref={containerRef} class="absolute inset-0" />        ← MapLibre owns this
+ *     <div ref={containerRef} class="h-full w-full" />            ← MapLibre owns this
  *     {children}                                                  ← React owns these
  *   </div>
+ *
+ * The container is sized intrinsically (`h-full w-full`) rather than via
+ * `absolute inset-0`, because MapLibre's `Map` constructor unconditionally
+ * sets `style.position = "relative"` on the container element — and inline
+ * styles win over Tailwind utilities. With `position: relative` overriding
+ * `absolute`, the `inset-0` anchors no longer apply and the container
+ * collapses to 0 height, leaving the canvas hidden and the map appearing
+ * as a black void even though tiles are loading correctly. Sizing
+ * intrinsically sidesteps that hijack entirely.
  *
  * Overlay children (BasemapLayer, future draw/NDVI overlays) are siblings of
  * the MapLibre container and absolutely positioned within the wrapper —
@@ -73,7 +82,7 @@ export function MapView({ center, zoom, children, style, className }: MapViewPro
   return (
     <MapContext.Provider value={contextValue}>
       <div className={className} style={{ position: 'relative', ...style }}>
-        <div ref={containerRef} className="absolute inset-0" />
+        <div ref={containerRef} className="h-full w-full" />
         {children}
       </div>
     </MapContext.Provider>

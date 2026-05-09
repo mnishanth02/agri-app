@@ -9,17 +9,23 @@
  *
  * ## Style choice — "imagery with labels" (hybrid)
  *
- * Phase 2's goal is satellite imagery **plus** road and place labels.
- * `arcgis/imagery` alone is satellite-only. The documented hybrid style
- * `arcgis/imagery/standard` bundles imagery with the standard reference
- * layer (roads + place labels), so this is what we apply directly.
+ * Phase 2's goal is satellite imagery **plus** road and place labels. The
+ * Esri Basemap Styles service docs designate `arcgis/imagery` as a
+ * `complete` style: a base satellite imagery layer with an overlay of
+ * place name labels and streets. (See the `complete` field on
+ * `StylesItemSelf` at developers.arcgis.com/rest/basemap-styles/types/ —
+ * the canonical example called out there is `arcgis/imagery`.)
  *
- * After the style applies, we sanity-check that the resolved style actually
- * contains at least one `symbol` layer (labels). If it does not — e.g. the
- * Esri account/API version no longer ships labels in this style — we
- * `console.error` so the dev knows to switch to merging
- * `arcgis/imagery/labels` on top of `arcgis/imagery`. A silent fallback
- * would mask the regression.
+ * Do NOT use `arcgis/imagery/standard` — that path returns the imagery
+ * base/detail layer *without* the labels overlay, so MapLibre receives a
+ * label-free style and `findFirstSymbolLayerId` returns null. Likewise
+ * `arcgis/imagery/labels` is labels-only and would need to be merged on
+ * top of imagery manually.
+ *
+ * After the style applies, we sanity-check that the resolved style
+ * actually contains at least one `symbol` layer (labels). If it does not
+ * we `console.error` so a future Esri-side change to the style payload
+ * surfaces loudly instead of silently shipping an unlabelled basemap.
  *
  * ## Esri attribution
  *
@@ -58,7 +64,7 @@ import { BasemapStyle } from '@esri/maplibre-arcgis';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { findFirstSymbolLayerId } from './map-style';
 
-const ARCGIS_HYBRID_STYLE = 'arcgis/imagery/standard';
+const ARCGIS_HYBRID_STYLE = 'arcgis/imagery';
 
 const latestBasemapOp = new WeakMap<MaplibreMap, symbol>();
 
@@ -118,7 +124,7 @@ export function applyArcgisImageryWithLabels(
         console.error(
           `[arcgis] Applied basemap style "${ARCGIS_HYBRID_STYLE}" has no symbol layers — ` +
             'place/road labels will be missing. Verify VITE_ESRI_API_KEY has the basemaps ' +
-            'privilege, or switch to merging "arcgis/imagery/labels" over "arcgis/imagery".',
+            'privilege, or merge "arcgis/imagery/labels" over "arcgis/imagery" as a fallback.',
         );
       }
       resolve();

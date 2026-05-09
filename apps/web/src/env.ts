@@ -23,8 +23,13 @@ export type WebEnv = z.infer<typeof schema>;
 const parsed = schema.safeParse(import.meta.env);
 
 if (!parsed.success) {
-  console.error('Invalid web env:', z.treeifyError(parsed.error));
-  throw new Error('Invalid web env. See VITE_* variables in apps/web/.env.example.');
+  const fieldErrors = parsed.error.issues.map((issue) => {
+    const path = issue.path.length > 0 ? issue.path.join('.') : '(root)';
+    return `  - ${path}: ${issue.message}`;
+  });
+  const message = `Invalid web env:\n${fieldErrors.join('\n')}\n\nSee VITE_* variables in apps/web/.env.example.`;
+  console.error(message);
+  throw new Error(message);
 }
 
 export const env: WebEnv = parsed.data;

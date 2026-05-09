@@ -5,8 +5,8 @@
  * needs to know "where in the layer stack do labels live" must scan
  * `map.getStyle().layers` at runtime and never hard-code Esri/ArcGIS layer
  * IDs — those IDs are unstable across basemap versions and across providers
- * (we may switch from `arcgis/imagery/standard` to a different hybrid style
- * later, or merge a separate label style on top).
+ * (we may switch from `arcgis/imagery` to a different hybrid style later,
+ * or merge a separate label style on top).
  */
 
 import type { Map as MaplibreMap } from 'maplibre-gl';

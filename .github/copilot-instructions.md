@@ -4,6 +4,8 @@
 
 This is a monorepo (`apps/*`, `packages/*`) for an agricultural field visualization app. The implementation plan lives in `docs/implementation.md` and the architectural decisions in `docs/plan.md`.
 
+
+
 ## Module Tracking Rules
 
 After completing work on any module from `docs/implementation.md`:
@@ -41,3 +43,6 @@ When a pending item is resolved, remove it from the table.
 ## Implementation Order
 
 Always follow `docs/implementation.md` top-to-bottom. Do not jump phases. Verify "Done when" criteria before moving on. If something is out of order, consult `docs/plan.md`.
+
+## Testing
+Credentials to login : admin@gmail.com / Admin@123

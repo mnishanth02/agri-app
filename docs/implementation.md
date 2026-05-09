@@ -420,7 +420,7 @@ Depends on: 2.3, Pre-flight P.1.
 
 1. Install `@esri/maplibre-arcgis@^1.2.0` (peer requires MapLibre `>=5.11.0`; keep MapLibre pinned to v5 for now).
 2. Create `lib/arcgis.ts` exporting an `applyArcgisImageryWithLabels(map, token)` helper:
-   - Use the documented MapLibre ArcGIS plugin call: `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery/standard', token })`.
+   - Use the documented MapLibre ArcGIS plugin call: `maplibreArcGIS.BasemapStyle.applyStyle(map, { style: 'arcgis/imagery', token })` — `arcgis/imagery` is the `complete` style per the [Basemap Styles types reference](https://developers.arcgis.com/rest/basemap-styles/types/) (satellite imagery + place/road labels). Do **not** use `arcgis/imagery/standard` (imagery base/detail layer only, no labels) or `arcgis/imagery/labels` (labels only).
    - The Phase 2 goal is satellite **plus road/place labels**. The selected style must contain `symbol` layers; a console warning is useful for diagnosis but is not enough to satisfy the goal.
    - Resolve only after the newly applied style has emitted `style.load` and/or the next `idle`.
 3. Create `components/map/BasemapLayer.tsx` — child of `MapView` that calls `beginStyleChange(map)` before `applyArcgisImageryWithLabels(...)` and `markStyleReady(map)` after the new style finishes loading. Gate on `isReady` and ensure the effect is idempotent under StrictMode.
