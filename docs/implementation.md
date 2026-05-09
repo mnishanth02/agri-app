@@ -429,7 +429,7 @@ Depends on: 2.3, Pre-flight P.1.
 
 **Done when:** `MapView + BasemapLayer` shows Maxar Vivid/satellite imagery with road and place labels, Esri attribution is visible, and the style contains at least one `symbol` layer.
 
-### Module 2.5 — `CreateLayout` shell + Karnataka default
+### Module 2.5 — `CreateLayout` shell + Karnataka default ✅ (completed 2026-05-09)
 
 Depends on: 2.4.
 
