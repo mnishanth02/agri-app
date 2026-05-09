@@ -457,7 +457,7 @@ Depends on: 2.4.
 
 **Phase entry:** Phases 1 and 2 complete.
 
-### Module 3.1 — `useUiStore` and `useFieldStore` (Zustand)
+### Module 3.1 — `useUiStore` and `useFieldStore` (Zustand) ✅ (completed 2026-05-09)
 
 Depends on: 0.5.
 
@@ -471,6 +471,10 @@ Depends on: 0.5.
 4. Use selectors for all store reads; use `useShallow` when selecting multiple values so form typing and UI state changes do not re-render the map subtree.
 
 **Done when:** A scratch component reads/writes both stores and re-renders only for selected slices.
+
+> ⚠️ DEVIATION: `apps/web` has no test runner (only `apps/api` and `packages/shared` use vitest). Per the module guidance, no runner was added for a single module. Verification instead lives in `apps/web/src/stores/__scratch__/`: a `StoreScratch.tsx` manual harness (never mounted in any route) plus a non-React `verify.mts` runtime harness (run with `node --experimental-strip-types apps/web/src/stores/__scratch__/verify.mts`). The harness subscribes to the whole store with Zustand v5's plain `subscribe(listener)` and applies the selector + equality check manually — exactly mirroring `useSyncExternalStoreWithSelector` (used by Zustand's React hook + `useShallow`). It asserts unrelated-slice updates do not "render", and that `setDraftGeometry` produces a single render across polygon + validation. 20/20 checks pass.
+
+> ⚠️ DEVIATION: Added a fifth action `setDraftGeometry({ polygon, areaHectares, valid, errors })` on top of the spec's four (`setDraftPolygon`, `setDraftValidation`, `clearDraft`, `setCurrentField`). It atomically writes the polygon and the three validation slices in a single `set()` call so Module 3.2's `useFieldDrawing` only triggers one re-render per Terra Draw `change`/`finish` event instead of two — the gpt-5.5 review of Module 3.1 flagged the two-call pattern as a re-render hazard for consumers selecting `{ draftPolygon, draftValid, draftAreaHectares }` together. The two original setters are retained for the (rarer) cases where polygon and validation arrive separately and for the `setDraftPolygon(null)` "reset" ergonomics from the toolbar's clear button.
 
 ### Module 3.2 — Terra-draw integration
 
