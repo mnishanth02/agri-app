@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { FieldDto } from '@viz-crop/shared';
 import { formatDistanceToNow } from 'date-fns';
 import { MoreVerticalIcon, PencilIcon, SquareArrowOutUpRightIcon, TrashIcon } from 'lucide-react';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, type MouseEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -209,7 +209,7 @@ function RenameDialog({
               id={`rename-${field.id}`}
               value={name}
               onChange={(event) => setName(event.target.value)}
-              maxLength={140}
+              maxLength={120}
               autoFocus
               aria-invalid={isInvalid}
               aria-describedby={isInvalid ? `rename-${field.id}-error` : undefined}
@@ -254,7 +254,7 @@ function DeleteAlert({
 }) {
   const deleteMutation = useDeleteField(field.id);
 
-  const handleConfirm = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleConfirm = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     deleteMutation.mutate(undefined, {
       onSuccess: () => {

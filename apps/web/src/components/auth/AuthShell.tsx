@@ -22,7 +22,7 @@ export function AuthShell({
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Form panel */}
       <div className="flex flex-col items-center justify-center px-6 py-12 lg:px-12">
-        <div className="w-full max-w-105 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* Logo / brand mark */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-primary">

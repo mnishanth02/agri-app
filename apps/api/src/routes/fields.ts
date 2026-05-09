@@ -41,10 +41,14 @@ const idParamSchema = z.object({ id: z.uuid() });
  * `{ field: [messages] }` map (`z.flattenError`). Throws via
  * `app.httpErrors.badRequest` so Fastify renders the standard error envelope.
  */
-function rejectInvalidBody(app: FastifyInstance, error: ZodError): never {
+function rejectInvalidRequest(
+  app: FastifyInstance,
+  error: ZodError,
+  message = 'Invalid request',
+): never {
   const flat = z.flattenError(error);
   throw app.httpErrors.badRequest(
-    `Invalid request body: ${JSON.stringify({
+    `${message}: ${JSON.stringify({
       formErrors: flat.formErrors,
       fieldErrors: flat.fieldErrors,
     })}`,
@@ -109,7 +113,7 @@ export async function fieldRoutes(app: FastifyInstance): Promise<void> {
     const userId = authedUserId(request);
 
     const parsed = createFieldDto.safeParse(request.body);
-    if (!parsed.success) rejectInvalidBody(app, parsed.error);
+    if (!parsed.success) rejectInvalidRequest(app, parsed.error, 'Invalid request body');
 
     const dto = parsed.data;
 
@@ -157,7 +161,7 @@ export async function fieldRoutes(app: FastifyInstance): Promise<void> {
     const userId = authedUserId(request);
 
     const params = idParamSchema.safeParse(request.params);
-    if (!params.success) rejectInvalidBody(app, params.error);
+    if (!params.success) rejectInvalidRequest(app, params.error, 'Invalid path parameters');
 
     const rows = await app.db
       .select(fieldSelect)
@@ -181,10 +185,10 @@ export async function fieldRoutes(app: FastifyInstance): Promise<void> {
     const userId = authedUserId(request);
 
     const params = idParamSchema.safeParse(request.params);
-    if (!params.success) rejectInvalidBody(app, params.error);
+    if (!params.success) rejectInvalidRequest(app, params.error, 'Invalid path parameters');
 
     const parsed = updateFieldDto.safeParse(request.body);
-    if (!parsed.success) rejectInvalidBody(app, parsed.error);
+    if (!parsed.success) rejectInvalidRequest(app, parsed.error, 'Invalid request body');
 
     const dto = parsed.data;
 
@@ -222,7 +226,7 @@ export async function fieldRoutes(app: FastifyInstance): Promise<void> {
     const userId = authedUserId(request);
 
     const params = idParamSchema.safeParse(request.params);
-    if (!params.success) rejectInvalidBody(app, params.error);
+    if (!params.success) rejectInvalidRequest(app, params.error, 'Invalid path parameters');
 
     const deleted = await app.db
       .delete(fields)

@@ -3,6 +3,7 @@ dist
 build
 .turbo
 .vite
+.tanstack/
 .env
 .env.local
 .env.*.local
