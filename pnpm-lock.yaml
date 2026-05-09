@@ -69,6 +69,9 @@ importers:
       '@clerk/react':
         specifier: 6.6.1
         version: 6.6.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@esri/maplibre-arcgis':
+        specifier: ^1.2.0
+        version: 1.2.0(maplibre-gl@5.24.0)
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.75.0(react@19.2.6))
@@ -815,6 +818,40 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@esri/arcgis-rest-basemap-sessions@4.10.2':
+    resolution: {integrity: sha512-5Tfxq4Akk8c8YkNccTW+NJXI5ZVcdl3U4xw+paC1KxW4ePpHUFUVnvgYMy5FL8EKGP8+tGIBw+EkxLnUHzYbxQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      '@esri/arcgis-rest-request': ^4.0.0
+
+  '@esri/arcgis-rest-feature-service@4.10.2':
+    resolution: {integrity: sha512-Lsgqi19hRi5TGvQs2AGCP8eOdylfKvNCL5Z3pM/qjHKQfFmmyiP1y4NngmuNy7l+hdqV/DAHtNWEVnQ+kcs3og==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@esri/arcgis-rest-portal': ^4.0.0
+      '@esri/arcgis-rest-request': ^4.0.0
+
+  '@esri/arcgis-rest-fetch@4.10.2':
+    resolution: {integrity: sha512-v0+PxY5wkMulH27GxxM28KCMU73aHT9rNiIK9dBJq1PwmIzEZc+dKZkKJsLvY839oWydUwgsoOClqAlKzqZkig==}
+
+  '@esri/arcgis-rest-form-data@4.10.2':
+    resolution: {integrity: sha512-lyYDZP2vNOu6ueoEEebjOTz0JS9HLnWwqX4J/27O0OfIloEAyIXTZjUn2jyCpe+Mu1Q814tI9pULhaXvC2iMLw==}
+
+  '@esri/arcgis-rest-portal@4.10.2':
+    resolution: {integrity: sha512-GtSSjo0wnpmtp0l9P5b/3NT0sODg8f/7+rFQSNYLpuqZqH/oV9W5plC4kv0jHRBZzGwk+D3kwOPd7X0J5poPsQ==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@esri/arcgis-rest-request': ^4.0.0
+
+  '@esri/arcgis-rest-request@4.10.2':
+    resolution: {integrity: sha512-EKJDKiXI5m1fcaFGx7NGOraiBjVHEBxaQ4PPa07OWhp8s8/xJCiJcYw7CAX9jTZgWPiXqh45zkIQ8e+EoMCwrw==}
+    engines: {node: '>=12.20.0'}
+
+  '@esri/maplibre-arcgis@1.2.0':
+    resolution: {integrity: sha512-q3XDt0kYt/pwaa+MZWjJ+eqmXuWRX2+r2TqWve20vJHi7EY2OkJEp9fSBe8G9JY1JI7v+gFv9BvMnbUVuEUCZQ==}
+    peerDependencies:
+      maplibre-gl: '>=5.11.0'
+
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
 
@@ -885,6 +922,9 @@ packages:
 
   '@mapbox/point-geometry@1.1.0':
     resolution: {integrity: sha512-YGcBz1cg4ATXDCM/71L9xveh4dynfGmcLDqufR+nQQy3fKwsAZsWd/x4621/6uJaeB9mwOHE6hPeDgXz9uViUQ==}
+
+  '@mapbox/tilebelt@2.0.3':
+    resolution: {integrity: sha512-HSscGw2yBlcm0GdLI3S5i8Xw/ffP2fTT2qmRbR1/AkJ02PnNN52yY+zzfw705LKKjesy8jJ/H1dieuioqN0Slw==}
 
   '@mapbox/tiny-sdf@2.2.0':
     resolution: {integrity: sha512-LVL4wgI9YAum5V+LNVQO6QgFBPw7/MIIY4XJPNsPDMrjEwcE+JfKk1LuIl8GnF197ejVdC9QdPaxrx5gfgdGXg==}
@@ -2527,6 +2567,10 @@ packages:
   d3-voronoi@1.1.2:
     resolution: {integrity: sha512-RhGS1u2vavcO7ay7ZNAPo4xeDh/VYeGof3x5ZLJBQgYhLegxr3s5IykvWmJ94FTU6mcbtp4sloqZ54mP6R4Utw==}
 
+  data-uri-to-buffer@4.0.1:
+    resolution: {integrity: sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A==}
+    engines: {node: '>= 12'}
+
   date-fns@4.1.0:
     resolution: {integrity: sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg==}
 
@@ -2752,6 +2796,10 @@ packages:
       picomatch:
         optional: true
 
+  fetch-blob@3.2.0:
+    resolution: {integrity: sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==}
+    engines: {node: ^12.20 || >= 14.13}
+
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
     engines: {node: '>=8'}
@@ -2759,6 +2807,14 @@ packages:
   find-my-way@9.6.0:
     resolution: {integrity: sha512-Zf4Xve4RymLl7NgaavNebZ01joJ8MfVerOG43wy7SHLO+r+K0C6d/SE0BiR7AV5V1VOCFlOP7ecdo+I4qmiHrQ==}
     engines: {node: '>=20'}
+
+  formdata-node@4.4.1:
+    resolution: {integrity: sha512-0iirZp3uVDjVGt9p49aTaqjk84TrglENEDuqfdlZQ1roC9CWlPk6Avf8EEnZNcAqPonwkG35x4n3ww/1THYAeQ==}
+    engines: {node: '>= 12.20'}
+
+  formdata-polyfill@4.0.10:
+    resolution: {integrity: sha512-buewHzMvYL29jdeQTVILecSaZKnt/RJWjoZCF5OW60Z67/GmSLBkOFM7qh1PI3zFNtJbaZL5eQu1vLfazOwj4g==}
+    engines: {node: '>=12.20.0'}
 
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
@@ -3009,6 +3065,9 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
+  mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -3019,6 +3078,15 @@ packages:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
+
+  node-domexception@1.0.0:
+    resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
+    engines: {node: '>=10.5.0'}
+    deprecated: Use your platform's native DOMException instead
+
+  node-fetch@3.3.2:
+    resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   node-releases@2.0.38:
     resolution: {integrity: sha512-3qT/88Y3FbH/Kx4szpQQ4HzUbVrHPKTLVpVocKiLfoYvw9XSGOX2FmD2d6DrXbVYyAQTF2HeF6My8jmzx7/CRw==}
@@ -3607,6 +3675,14 @@ packages:
       jsdom:
         optional: true
 
+  web-streams-polyfill@3.3.3:
+    resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
+    engines: {node: '>= 8'}
+
+  web-streams-polyfill@4.0.0-beta.3:
+    resolution: {integrity: sha512-QW95TCTaHmsYfHDybGMwO5IJIM93I/6vTRk+daHTWFPhwh+C8Cg7j7XyKrwrj8Ib6vYXe0ocYNrmzY4xAAN6ug==}
+    engines: {node: '>= 14'}
+
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
@@ -4084,6 +4160,49 @@ snapshots:
   '@esbuild/win32-x64@0.27.7':
     optional: true
 
+  '@esri/arcgis-rest-basemap-sessions@4.10.2(@esri/arcgis-rest-request@4.10.2)':
+    dependencies:
+      '@esri/arcgis-rest-request': 4.10.2
+      mitt: 3.0.1
+      tslib: 2.8.1
+
+  '@esri/arcgis-rest-feature-service@4.10.2(@esri/arcgis-rest-portal@4.10.2(@esri/arcgis-rest-request@4.10.2))(@esri/arcgis-rest-request@4.10.2)':
+    dependencies:
+      '@esri/arcgis-rest-portal': 4.10.2(@esri/arcgis-rest-request@4.10.2)
+      '@esri/arcgis-rest-request': 4.10.2
+      pbf: 4.0.1
+      tslib: 2.8.1
+
+  '@esri/arcgis-rest-fetch@4.10.2':
+    dependencies:
+      node-fetch: 3.3.2
+
+  '@esri/arcgis-rest-form-data@4.10.2':
+    dependencies:
+      formdata-node: 4.4.1
+
+  '@esri/arcgis-rest-portal@4.10.2(@esri/arcgis-rest-request@4.10.2)':
+    dependencies:
+      '@esri/arcgis-rest-request': 4.10.2
+      tslib: 2.8.1
+
+  '@esri/arcgis-rest-request@4.10.2':
+    dependencies:
+      '@esri/arcgis-rest-fetch': 4.10.2
+      '@esri/arcgis-rest-form-data': 4.10.2
+      mitt: 3.0.1
+      tslib: 2.8.1
+
+  '@esri/maplibre-arcgis@1.2.0(maplibre-gl@5.24.0)':
+    dependencies:
+      '@esri/arcgis-rest-basemap-sessions': 4.10.2(@esri/arcgis-rest-request@4.10.2)
+      '@esri/arcgis-rest-feature-service': 4.10.2(@esri/arcgis-rest-portal@4.10.2(@esri/arcgis-rest-request@4.10.2))(@esri/arcgis-rest-request@4.10.2)
+      '@esri/arcgis-rest-portal': 4.10.2(@esri/arcgis-rest-request@4.10.2)
+      '@esri/arcgis-rest-request': 4.10.2
+      '@mapbox/tilebelt': 2.0.3
+      maplibre-gl: 5.24.0
+      mitt: 3.0.1
+
   '@fastify/ajv-compiler@4.0.5':
     dependencies:
       ajv: 8.20.0
@@ -4168,6 +4287,8 @@ snapshots:
   '@mapbox/jsonlint-lines-primitives@2.0.2': {}
 
   '@mapbox/point-geometry@1.1.0': {}
+
+  '@mapbox/tilebelt@2.0.3': {}
 
   '@mapbox/tiny-sdf@2.2.0': {}
 
@@ -6627,6 +6748,8 @@ snapshots:
 
   d3-voronoi@1.1.2: {}
 
+  data-uri-to-buffer@4.0.1: {}
+
   date-fns@4.1.0: {}
 
   dateformat@4.6.3: {}
@@ -6822,6 +6945,11 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
+  fetch-blob@3.2.0:
+    dependencies:
+      node-domexception: 1.0.0
+      web-streams-polyfill: 3.3.3
+
   fill-range@7.1.1:
     dependencies:
       to-regex-range: 5.0.1
@@ -6831,6 +6959,15 @@ snapshots:
       fast-deep-equal: 3.1.3
       fast-querystring: 1.1.2
       safe-regex2: 5.1.1
+
+  formdata-node@4.4.1:
+    dependencies:
+      node-domexception: 1.0.0
+      web-streams-polyfill: 4.0.0-beta.3
+
+  formdata-polyfill@4.0.10:
+    dependencies:
+      fetch-blob: 3.2.0
 
   forwarded@0.2.0: {}
 
@@ -7034,11 +7171,21 @@ snapshots:
 
   minimist@1.2.8: {}
 
+  mitt@3.0.1: {}
+
   ms@2.1.3: {}
 
   murmurhash-js@1.0.0: {}
 
   nanoid@3.3.12: {}
+
+  node-domexception@1.0.0: {}
+
+  node-fetch@3.3.2:
+    dependencies:
+      data-uri-to-buffer: 4.0.1
+      fetch-blob: 3.2.0
+      formdata-polyfill: 4.0.10
 
   node-releases@2.0.38: {}
 
@@ -7583,6 +7730,10 @@ snapshots:
       '@types/node': 22.19.17
     transitivePeerDependencies:
       - msw
+
+  web-streams-polyfill@3.3.3: {}
+
+  web-streams-polyfill@4.0.0-beta.3: {}
 
   webpack-virtual-modules@0.6.2: {}
 
