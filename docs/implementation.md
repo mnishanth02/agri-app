@@ -341,7 +341,7 @@ Depends on: 1.7, 0.5 (shadcn).
 
 > ⚠️ DEVIATION: Step 1 (`layouts/DashboardLayout.tsx`) was intentionally skipped — `apps/web/src/routes/_auth/route.tsx::AuthLayout` already provides the chrome + sign-out via `<UserButton>`. The page-level shell is inlined in the dashboard route. A separate file would be empty duplication for one consumer. Confirmed sound by both pre-implementation rubber-duck and gpt-5.5 review.
 
-### Module 1.9 — Auth/ownership smoke tests for the API
+### Module 1.9 — Auth/ownership smoke tests for the API ✅ (completed 2026-05-09)
 
 Depends on: 1.6.
 
@@ -353,6 +353,10 @@ Depends on: 1.6.
    - A second fake user cannot read or mutate user-1 records.
 
 **Done when:** `pnpm --filter @viz-crop/api test` passes.
+
+> ✅ Implemented in `apps/api/test/fields.routes.test.ts` (14 new tests, plus the pre-existing geometry round-trip = 15 total). Clerk is faked via `vi.mock('@clerk/fastify', …)` — `getAuth(request)` reads an `x-test-user-id` header, `clerkPlugin` is a no-op. The dev PostGIS container is reused with synthetic `crypto.randomUUID()`-namespaced user IDs and `beforeAll`+`afterAll` cleanup (pg-mem rejected because it can't run PostGIS). `vitest.config.ts` now also picks up `test/**/*.test.ts`; `tsconfig.test.json` overrides `rootDir: "."` so the new directory compiles. Reviewed by gpt-5.5 — no issues.
+
+> ⚠️ PENDING: `apps/api/test/` currently has no migration bootstrap — running the suite against a fresh DB will fail with "relation fields does not exist" until `pnpm --filter @viz-crop/api db:migrate` has been executed. Acceptable for v1 (every developer has the dev DB migrated); will be revisited if/when the API gets a CI runner that provisions a clean DB on every job.
 
 ### Phase 1 exit criteria
 
@@ -901,6 +905,7 @@ Depends on: 8.1, 8.2.
 | 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to `polygonGeoJsonSchema` | Phase 3 (drawing tool) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. A client-side guard would give the user instant feedback while drawing instead of a 400 from the API. Likely uses `@turf/boolean-valid` or a small in-house segment-intersection check. |
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.8 | Run signed-in browser smoke that visually confirms empty state, field card, kebab → rename, and kebab → delete with confirm | User manual verification at `http://localhost:5173` after `pnpm dev` | Automated Clerk OTP sign-in is out of scope (test users have no password). Module 1.6 already proved the full CRUD API contract end-to-end with real Clerk JWTs (24/24 smoke). Module 1.8 passes typecheck/biome/vite build, dev servers boot cleanly, and gpt-5.5 review found no remaining issues after the cache-sync fix was applied. Supersedes the previous 1.7 deferred-smoke entry. |
+| 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 
 ---
 
