@@ -205,9 +205,10 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 
 ### Phase 4 — Background EOSDA warm-up (~1 h)
 - `services/eosda-client.ts` — fetch wrapper, `EOSDA_API_KEY` injection, error mapping, and no logging of full upstream URLs containing `api_key`.
-- `services/field-warmup.ts` — `void warmField(id).catch(...)` called from `POST /api/fields` after the insert (no `await`). Creates/reuses EOSDA `cropper_ref`, calls Search for the polygon over the last 6 months (`sentinel2`, `shapeRelation: CONTAINS`, cloud <=80), and upserts to `cached_scenes`. Errors are logged with `fieldId`, never propagated to field creation.
+- `services/field-warmup.ts` — `void warmField(id).catch(...)` called from `POST /api/fields` after the insert (no `await`). Creates/reuses EOSDA Render `cropper_ref`, performs a latest-first Sentinel-2 Search for the polygon (`sentinel2`, `shapeRelation: CONTAINS`, cloud 0-80, `sort: { date: 'desc' }`, small `limit`), and upserts the newest available scene metadata to `cached_scenes`. Errors are logged with `fieldId`, never propagated to field creation.
+- Do not fetch six months of imagery, statistics, or tiles during field creation. EOSDA Search metadata is cheap enough to warm; Render tiles and `mt_stats` stay on-demand.
 
-**Verify:** Create a field; `eosda_cropper_ref` and `cached_scenes` populate when EOSDA is available; the POST itself returns quickly; if EOSDA fails the create still succeeds and a useful log line is emitted.
+**Verify:** Create a field; `eosda_cropper_ref` and the newest available `cached_scenes` row populate when EOSDA has data for that polygon; the POST itself returns quickly; if EOSDA fails the create still succeeds and a useful log line is emitted.
 
 ### Phase 5 — Analysis layout shells + map overlays (~2.5 h)
 - `AnalysisLayout`: full-bleed map + `TopBar` + `RightSidebar` (collapsible icon rail) + `BottomBar` (collapsible tabs).
@@ -218,9 +219,9 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 **Verify:** Visual regression vs the two reference screenshots — sidebar, bottom bar, all overlay positions land correctly. NDVI not yet wired.
 
 ### Phase 6 — Layer 4 (NDVI) + DateTimeline interactivity (~2 h)
-- `POST /api/eosda/scenes` reads cache first; on miss, EOSDA Search then upsert.
+- `POST /api/eosda/scenes` reads cache first; on miss/stale/force-refresh, EOSDA Search then upsert. This route is the source of available Sentinel-2 timeline dates.
 - `useEosdaScenes(fieldId)` feeds `DateTimeline`.
-- Default to most recent scene with cloud < 30 %.
+- Default to the newest scene with cloud < 30 % when one exists; otherwise select the newest scene and mark it cloudy in the timeline.
 - `GET /api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` proxy with private 24 h Cache-Control; upstream URL is EOSDA `/api/render/<view_id>/<band>/<z>/<x>/<y>` plus that field's `cropper_ref` when present.
 - `NdviLayer` adds MapLibre `raster` source via the proxied URL; opacity from Zustand (default 0.75).
 - Date click → updates Zustand selected `viewId` → `NdviLayer` swaps source.
@@ -268,10 +269,11 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 ### EOSDA-specific
 1. **Trial activation is manual.** Email at the start of Phase 0.
 2. **Account quotas vary.** Cache aggressively in Postgres + TanStack Query and confirm limits in the EOSDA dashboard.
-3. **`view_id` is required for tiles and contains slashes.** Always Search → Render, and pass `viewId` through the app proxy as a query param.
-4. **Clipped render tiles need `cropper_ref`.** Store one per field geometry; otherwise the NDVI raster is scene-wide.
-5. **Statistics are async.** `mt_stats` creates a task, then the API must poll for results. Recommended date ranges are <=365 days, and only up to 3 indices should be requested at once.
-6. **Polygon size limit 200 km² is an app guardrail.** Validate frontend + backend and confirm any account-specific EOSDA limits before widening it.
+3. **Search is the timeline source.** EOSDA Search returns the available Sentinel-2 `date` + `view_id` pairs for a polygon. It still requires a date range, so use a configurable recent window for the timeline instead of generating fixed dates in the UI.
+4. **`view_id` is required for tiles and contains slashes.** Always Search → Render, and pass `viewId` through the app proxy as a query param.
+5. **Clipped render tiles need `cropper_ref`.** Store one Render Cropper `cropper_ref` per field geometry; otherwise the NDVI raster is scene-wide. Do not confuse this with EOSDA Field Management `field_id`, which is a separate reusable-AOI workflow.
+6. **Statistics are async.** `mt_stats` creates a task, then the API must poll for results. Recommended date ranges are <=365 days, and only up to 3 indices should be requested at once.
+7. **Polygon size limit 200 km² is an app guardrail.** Validate frontend + backend and confirm any account-specific EOSDA limits before widening it.
 
 ### MapLibre-specific
 1. **Layer order is critical.** Use `beforeId` when inserting dynamic layers.

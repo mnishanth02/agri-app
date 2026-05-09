@@ -402,7 +402,7 @@ Depends on: 2.1.
 
 **Done when:** Mounting and unmounting a host component does not leak `<canvas>` elements (verify in DOM inspector); StrictMode settles with one live map/canvas; `isStyleReady` is observably `false` until the basemap style applies and `true` afterward; `styleEpoch` increments after the ArcGIS style is ready.
 
-### Module 2.3 — `MapView` component
+### Module 2.3 — `MapView` component ✅ (completed 2026-05-09)
 
 Depends on: 2.2.
 
@@ -414,7 +414,7 @@ Depends on: 2.2.
 
 **Done when:** `<MapView style={{ height: '100%' }} />` renders an empty grey MapLibre canvas inside a sized parent.
 
-### Module 2.4 — ArcGIS basemap plugin
+### Module 2.4 — ArcGIS basemap plugin ✅ (completed 2026-05-09)
 
 Depends on: 2.3, Pre-flight P.1.
 
@@ -553,7 +553,9 @@ Depends on: 2.5, 3.5.
 
 ## Phase 4 — EOSDA warm-up service
 
-**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that creates an EOSDA `cropper_ref`, runs a Search for the last 6 months of Sentinel-2, and upserts results into `cached_scenes`. The POST response is fast either way.
+**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that creates an EOSDA Render `cropper_ref`, discovers the latest available Sentinel-2 scene metadata for the polygon, and upserts that scene into `cached_scenes`. The POST response is fast either way. Do **not** prefetch six months of imagery, statistics, or tiles during field creation; the timeline is expanded later through the cache-first scenes route.
+
+> Design note: EOSDA Search is the source of available Sentinel-2 dates. Search still requires a date range, so "latest available" means querying a configurable recent window with `sort: { date: 'desc' }` and a small `limit`, then expanding the window only if no scene is found.
 
 **Phase entry:** Phase 1 complete. Pre-flight P.2 (EOSDA key activated).
 
@@ -567,7 +569,7 @@ Depends on: 0.4, 0.8.
    - Logs only the path + status, **never** the full URL when it carries `api_key`.
 2. Make `EOSDA_API_KEY` a required env var (now that this phase is active).
 
-**Done when:** A small ad-hoc script can hit a low-impact EOSDA endpoint (e.g., user/profile if available) and parse the response.
+**Done when:** Unit tests prove request construction/error mapping, and an optional `RUN_EOSDA_LIVE=1` smoke can hit Search with a tiny `limit` against a known polygon without leaking the API key in logs.
 
 ### Module 4.2 — Cropper-ref creation/reuse
 
@@ -575,8 +577,10 @@ Depends on: 4.1, 1.2.
 
 1. Add `services/eosda-cropper.ts` with `getOrCreateCropperRef(field)`:
    - If `field.eosda_cropper_ref` is set, return it.
-   - Else POST the field polygon to EOSDA's cropper endpoint per current docs, capture the returned reference.
+   - Else POST the field polygon as a GeoJSON Feature to EOSDA Render Cropper (`/api/render/cropper/`), capture the returned `cropper_ref`.
    - `UPDATE fields SET eosda_cropper_ref = $1 WHERE id = $2`.
+
+> Note: EOSDA also has Field Management endpoints that return a numeric `field_id`. That is a different workflow. This app stores Render `cropper_ref` because the Render API uses it to clip XYZ tiles to our field polygon.
 
 **Done when:** Calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref`, and a second call returns the same value without a new EOSDA POST. (End-to-end "create field → cropper appears" verification waits until Module 4.6, when `warmField` is wired into `POST /api/fields`.)
 
@@ -585,8 +589,9 @@ Depends on: 4.1, 1.2.
 Depends on: 4.1.
 
 1. Add `services/eosda-search.ts` with `searchScenes({ geometry, from, to })`:
-   - POSTs to `/api/lms/search/v2/sentinel2` with `shape: <GeoJSON>`, `shapeRelation: 'CONTAINS'`, `cloudCoverage: { lte: 80 }`, date range.
-   - Returns a normalized list `{ viewId, sceneDate, cloudPercent, dataCoveragePercent, tmsTemplate }[]`.
+   - POSTs to `/api/lms/search/v2/sentinel2` with `intersection_validation: true`, `fields: ['date', 'sceneID', 'cloudCoverage', 'dataCoveragePercentage', 'tms']`, `limit`, `page`, `search.shape: <GeoJSON>`, `search.shapeRelation: 'CONTAINS'`, `search.cloudCoverage: { from: 0, to: 80 }`, date range, and `sort: { date: 'desc' }`.
+   - Supports a `limit` option so callers can request only the latest scene during create warm-up (`limit: 1`) or a broader page for the analysis timeline.
+   - Returns a normalized list `{ viewId, sceneDate, sceneId, cloudPercent, dataCoveragePercent, tmsTemplate }[]`.
 
 **Done when:** A unit test mocks `fetch` and asserts the mapping.
 
@@ -595,8 +600,10 @@ Depends on: 4.1.
 Depends on: 4.3, 1.2.
 
 1. Add `services/scene-cache.ts`:
-   - `upsertScenes(fieldId, scenes)` — `INSERT ... ON CONFLICT (field_id, view_id) DO UPDATE` for the columns that may change (cloud, data coverage, tms template).
+   - `upsertScenes(fieldId, scenes)` — `INSERT ... ON CONFLICT (field_id, view_id) DO UPDATE` for the columns that may change (scene id, cloud, data coverage, tms template, last-seen timestamp).
    - `listScenes(fieldId, dateRange?)` — read from `cached_scenes`, ordered by date desc.
+   - `getMostRecentScene(fieldId)` — reads the newest cached scene for default selection and smoke checks.
+2. If needed, add a small migration extending `cached_scenes` with `scene_id` and `last_seen_at`/`updated_at`. The initial Phase 1 schema already has the core `(field_id, view_id)` uniqueness; this timestamp is only for deciding when we last checked EOSDA if the latest scene has not changed.
 
 **Done when:** Inserts and re-inserts of the same `view_id` are idempotent.
 
@@ -607,11 +614,11 @@ Depends on: 4.2, 4.3, 4.4.
 1. Create `services/field-warmup.ts` exporting `warmField(fieldId)`:
    - Loads the field (by id) — exits silently if missing.
    - `getOrCreateCropperRef(field)`.
-   - `searchScenes({ geometry: field.geometry, from: today-6mo, to: today })`.
-   - `upsertScenes(field.id, results)`.
+   - `searchLatestScene({ geometry: field.geometry })`, implemented as a latest-first Search over a configurable recent window, e.g. 90 days, with fallback expansion to 180/365 days if EOSDA returns no scenes.
+   - `upsertScenes(field.id, latestScene ? [latestScene] : [])`.
    - All errors logged with `{ fieldId, step }` and swallowed.
 
-**Done when:** Calling `warmField(id)` from a scratch script populates `eosda_cropper_ref` and `cached_scenes`.
+**Done when:** Calling `warmField(id)` from a scratch script populates `eosda_cropper_ref` and, when EOSDA has data for the polygon, the newest available row in `cached_scenes`.
 
 ### Module 4.6 — Wire `warmField` into `POST /api/fields`
 
@@ -624,9 +631,10 @@ Depends on: 1.6, 4.5.
 
 ### Phase 4 exit criteria
 
-- `cached_scenes` populates within ~30 s of field creation.
+- `cached_scenes` has the newest available Sentinel-2 scene metadata within ~30 s of field creation when EOSDA has data for the polygon.
 - If EOSDA returns an error, the POST still succeeds and a structured log line records the failure.
 - `EOSDA_API_KEY` never appears in client-visible network requests.
+- No imagery tiles or `mt_stats` tasks are fetched during field creation.
 
 ---
 
@@ -715,11 +723,12 @@ Depends on: 5.1.
 Depends on: 4.4, 1.6.
 
 1. Add `routes/eosda.scenes.ts` with auth and ownership check (verify `auth.userId` owns `fieldId`).
-2. Body: `{ fieldId, dateRange? }` validated with zod from `packages/shared`.
-3. Behavior: read `cached_scenes` first; if empty for the requested range, run `searchScenes` and `upsertScenes`, then return.
-4. Response: `SceneDto[]` from shared.
+2. Body: `{ fieldId, dateRange?, forceRefresh? }` validated with zod from `packages/shared`.
+3. Behavior: read `cached_scenes` first; if empty or stale for the requested range (or `forceRefresh` is true), run EOSDA Search for that range and upsert the returned scene metadata, then return.
+4. Default `dateRange`: a configurable timeline window, e.g. the last 90 days. This is metadata-only and exists so the DateTimeline can show the available Sentinel-2 dates; it is not a tile/statistics prefetch.
+5. Response: `SceneDto[]` from shared, ordered newest first.
 
-**Done when:** Calling the route returns the same scenes that warm-up populated.
+**Done when:** Calling the route returns the latest warm-up scene immediately, refreshes/expands the timeline metadata when needed, and still returns no direct EOSDA URLs or API keys to the browser.
 
 ### Module 6.2 — `useEosdaScenes` hook
 
@@ -727,7 +736,7 @@ Depends on: 6.1, 0.7.
 
 1. Create `hooks/useEosdaScenes.ts` wrapping `apiFetch('/api/eosda/scenes', ...)` via TanStack Query.
 2. `staleTime: 60 * 60 * 1000` (1 h) per plan.md §10.
-3. Auto-select the latest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset).
+3. Auto-select the newest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset). If no low-cloud scene exists, select the newest scene and let the timeline mark it as cloudy.
 
 **Done when:** Mounting `/fields/:id` populates the DateTimeline with real scene dates and selects a default.
 
@@ -773,7 +782,9 @@ Depends on: 5.5, 6.2, 6.4.
 
 1. Replace the visual stub `DateTimeline` with a data-bound version:
    - Receives scenes from `useEosdaScenes`.
-   - Renders one chip per date, with a cloud icon when `cloudPercent > 50`.
+   - Renders one chip per available Sentinel-2 acquisition date from the EOSDA Search response, not a fixed/generated date sequence.
+   - If multiple scenes share the same date, groups them and uses the best candidate for that chip (lowest cloud, then highest data coverage).
+   - Shows a cloud icon when `cloudPercent > 50`.
    - Hovering a chip calls a tooltip with cloud + data coverage.
    - Clicking writes `viewId` to `useUiStore.selectedViewId`.
 2. Hide chips with `cloudPercent > 50` behind a "show cloudy" toggle that defaults to off (matches `CloudHiddenToast` in plan.md §4).
