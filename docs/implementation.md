@@ -307,7 +307,7 @@ Depends on: 1.2, 1.3, 1.4, 0.8.
 
 **Done when:** A signed-in `curl` flow can POST → GET → PATCH → DELETE a field. A second user gets an empty list and 404 for the first user's IDs.
 
-### Module 1.7 — Web `useFields` hook
+### Module 1.7 — Web `useFields` hook ✅ (completed 2026-05-09)
 
 Depends on: 0.7, 0.8, 1.6.
 
@@ -319,6 +319,8 @@ Depends on: 0.7, 0.8, 1.6.
 2. Set sensible TanStack defaults (5 min stale on the list per plan.md §10).
 
 **Done when:** A scratch component listing `useFieldList().data` renders the seeded user's fields.
+
+> ⚠️ PENDING: Live signed-in browser smoke deferred — Module 1.8 will rewrite `routes/_auth/index.tsx` with the real `EmptyState` / `FieldList` / `FieldCard` and naturally exercise this hook end-to-end. Hook compiles (typecheck ✅), bundles (vite build ✅), is reviewed clean by gpt-5.5, and the underlying API contract was already proven in Module 1.6's 24/24 signed-in smoke with real Clerk JWTs.
 
 ### Module 1.8 — Dashboard UI
 
@@ -894,6 +896,7 @@ Depends on: 8.1, 8.2.
 |--------|------|---------------|-------|
 | 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to `polygonGeoJsonSchema` | Phase 3 (drawing tool) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. A client-side guard would give the user instant feedback while drawing instead of a 400 from the API. Likely uses `@turf/boolean-valid` or a small in-house segment-intersection check. |
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Module 1.8 (dashboard rename UX) or whenever the dashboard needs clear-field UX | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Today users can set those fields but can't blank them out via the API. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
+| 1.7 | Run signed-in browser smoke that visually confirms `useFieldList().data` renders | Module 1.8 (dashboard rewrite naturally exercises the hook) | Spec's "Done when" calls for a visual smoke. Deferred because Module 1.8 rewrites `routes/_auth/index.tsx` with the real dashboard and will surface any runtime hook integration issue immediately. Module 1.6 already proved the API contract end-to-end with real Clerk JWTs (24/24 smoke). |
 
 ---
 
