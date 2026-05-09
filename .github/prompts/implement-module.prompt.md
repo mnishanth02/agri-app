@@ -1,5 +1,5 @@
 ---
-mode: agent
+agent: anvil
 description: Implement a single module from docs/implementation.md, following the project's tracking rules.
 ---
 
