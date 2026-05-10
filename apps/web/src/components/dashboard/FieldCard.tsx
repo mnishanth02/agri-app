@@ -274,7 +274,7 @@ function DeleteAlert({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete &quot;{field.name}&quot;?</AlertDialogTitle>
+          <AlertDialogTitle>Delete &ldquo;{field.name}&rdquo;?</AlertDialogTitle>
           <AlertDialogDescription>
             This permanently removes the field and all cached satellite scenes and NDVI stats. This
             action cannot be undone.

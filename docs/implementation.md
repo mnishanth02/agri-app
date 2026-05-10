@@ -670,13 +670,13 @@ Depends on: 1.6, 4.5.
 
 ---
 
-## Phase 5 — Analysis layout shells + map overlays
+## Phase 5 — Analysis layout shells + map overlays ✅ (completed 2026-05-10)
 
 **Goal:** `/fields/:id` shows the full-bleed analysis layout matching the reference screenshots: top bar, collapsible right sidebar, collapsible bottom bar, and all map overlay controls — even if most are visual stubs.
 
 **Phase entry:** Phases 1, 2, 3 complete. Phase 4 is **not** required for layout work.
 
-### Module 5.1 — `AnalysisLayout` shell
+### Module 5.1 — `AnalysisLayout` shell ✅ (completed 2026-05-10)
 
 Depends on: 2.3.
 
@@ -688,7 +688,7 @@ Depends on: 2.3.
 
 **Done when:** Visiting `/fields/:id` for an existing field shows the polygon centred and outlined on the satellite basemap.
 
-### Module 5.2 — `TopBar`
+### Module 5.2 — `TopBar` ✅ (completed 2026-05-10)
 
 Depends on: 5.1.
 
@@ -696,7 +696,7 @@ Depends on: 5.1.
 
 **Done when:** Visual match to reference screenshot's top bar.
 
-### Module 5.3 — `RightSidebar` (collapsible)
+### Module 5.3 — `RightSidebar` (collapsible) ✅ (completed 2026-05-10)
 
 Depends on: 5.1, 0.5 (shadcn `Sheet`/`Tabs`/`Tooltip`).
 
@@ -709,7 +709,7 @@ Depends on: 5.1, 0.5 (shadcn `Sheet`/`Tabs`/`Tooltip`).
 
 **Done when:** Click an icon → expands, shows pane title, second click collapses.
 
-### Module 5.4 — `BottomBar`
+### Module 5.4 — `BottomBar` ✅ (completed 2026-05-10)
 
 Depends on: 5.1, 0.5 (shadcn `Tabs`).
 
@@ -719,7 +719,7 @@ Depends on: 5.1, 0.5 (shadcn `Tabs`).
 
 **Done when:** Crop info tab shows real metadata for the current field; the other two render placeholders without errors.
 
-### Module 5.5 — Map overlays (visual only)
+### Module 5.5 — Map overlays (visual only) ✅ (completed 2026-05-10)
 
 Depends on: 5.1.
 
@@ -968,6 +968,14 @@ Depends on: 8.1, 8.2.
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape (de-risked) | First env with EOSDA creds | Originally a code-correctness risk: `searchScenes` would throw on missing/null `results`, misclassifying genuine no-coverage as failure. Phase 4 review fix made the wrapper lenient (missing/null → `[]`, only present-but-non-array throws), so the runtime risk is closed. Live POST against a polygon outside Sentinel-2 coverage is still a useful contract confirmation but no longer blocks Phase 4 exit. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
+| 5.5 | Smooth out the RightSidebar pane's two stacked motion effects (width animation + slide-in-from-right) | Phase 6 polish | Final UI/UX audit (N1) flagged the brief drift between `motion-safe:transition-[width]` on the outer container and `slide-in-from-right-2 + fade-in-0` on the pane itself. Defer to Phase 6 once real pane content stops being the dominant motion noise. |
+| 5.5 | Lock IndexSwitcher per-button width via `min-w-[3.5rem]` so AnalysisToolbar doesn't jitter when Phase 6+ adds NDMI / MSAVI / SAVI | Phase 6 | Final UI/UX audit (N2). Currently NDVI / EVI / NDWI are all 3–4 chars so the bar is stable; pin widths before adding longer index names. |
+| 5.2 | Surface a visible "Back" label on the TopBar back-arrow at `sm+` so the escape route doesn't depend on tooltip discovery | Phase 6 polish | Final UI/UX audit (N3). The screen has no breadcrumb, so an explicit label improves wayfinding. |
+| 5.5 | Re-evaluate `<output>` semantics for `CloudHiddenToast` once Phase 6 wires the real cloud-coverage signal | Phase 6 | Final UI/UX audit (N4). Use `<output>` only if the chip becomes a computed-result of the active scene's cloud %; otherwise downgrade to `<div aria-live="polite">`. |
+| 5.5 | Provide a tap-revealed lat/lng readout for `< lg` viewports (CoordsBadge currently `hidden lg:inline-flex`) | Phase 6 mobile pass | Final UI/UX audit (N5). On a 12" laptop / iPad the lat/lng is invisible; revisit alongside the broader mobile collision matrix in Phase 6+. |
+| 5.5 | Tighten the gap between `ZoomControls` and `FullscreenButton` to a 4 px hairline so the left rail reads as one piece of chrome | Phase 6 polish | Final UI/UX audit (N6). Currently ~11 px sliver of map between them; could merge into one container or drop FullscreenButton's offset to `top-[calc(50%+44px)]`. |
+| 5.3 | Add a small `sr-only` "Use arrow keys to navigate the sidebar" hint near the rail so keyboard users discover the roving-tabindex pattern | Phase 6 polish | Final UI/UX audit (N7). With 12 rail buttons reachable only by Arrow keys after focusing one, the navigation pattern needs a discoverability aid. |
+| Phase 5 | Standardise "coming soon" copy + disabled-stub mechanism across `TopBar`, `BottomBar`, `RightSidebar`, `SourceSwitcher`, `DownloadButton` (all use Radix Tooltip; copy format `"<Action> coming soon…"`) | When the next stub is added or replaced | Final UI/UX audit (R5). Critical mismatch resolved (TopBar now uses Radix Tooltip + sentence case + ellipsis); remaining copy unification across in-pane "Coming soon…" placeholders can land alongside Phase 6/7 content. |
 
 ---
 
