@@ -535,13 +535,13 @@ describe('warmField — defensive cropper rejection branch', () => {
       const log = makeLogger();
 
       await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
-      await Promise.resolve();
 
-      const defensive = log.error.mock.calls.find(
-        ([, msg]) => msg === 'warm-up: cropper rejected unexpectedly',
-      );
-      if (!defensive) throw new Error('defensive cropper-rejection log was not emitted');
-      expect(defensive[0]).toMatchObject({ fieldId, err: cropperErr });
+      await vi.waitFor(() => {
+        const defensive = log.error.mock.calls.find(
+          ([, msg]) => msg === 'warm-up: cropper rejected unexpectedly',
+        );
+        expect(defensive?.[0]).toMatchObject({ fieldId, err: cropperErr });
+      });
       // Scene still upserted — the search branch is independent.
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
@@ -554,9 +554,8 @@ describe('warmField — defensive cropper rejection branch', () => {
   it('does not wait for a cropper promise that never settles before upserting the scene', async () => {
     const { fieldId, db, cleanup } = await seedField();
     try {
-      vi.mocked(getOrCreateCropperRef).mockImplementationOnce(
-        () => new Promise<string | null>(() => {}),
-      );
+      const neverSettlingCropper = new Promise<string | null>(() => {});
+      vi.mocked(getOrCreateCropperRef).mockReturnValueOnce(neverSettlingCropper);
       const scene = makeSearchScene({ sceneID: 'S2B_hung_cropper', view_id: 'view/hung/01' });
       mockFetch({
         searchResponses: [{ status: 200, body: { results: [scene] } }],
