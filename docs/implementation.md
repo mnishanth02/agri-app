@@ -45,10 +45,10 @@ These are blocking for later phases but require external lead time. Kick them of
 | # | Task | Blocks | Where it lands |
 |---|---|---|---|
 | P.1 | Sign up at [developers.arcgis.com](https://developers.arcgis.com); create API key scoped to **Basemaps**; restrict to `localhost` + prod domain. This key becomes required once Phase 2 ships. | Phase 2 | `VITE_ESRI_API_KEY` |
-| P.2 | Sign up at [api-connect.eos.com](https://api-connect.eos.com/user-dashboard/); email `api.support@eosda.com` to activate the trial and ask for the Cropper API creation flow, Field Management `field_id` compatibility with Render `cropper_ref`, and current trial rate limits. | Phase 4 for Search; Phase 6 for clipped Render tiles | `EOSDA_API_KEY`; support response recorded in the Phase 4/6 notes |
+| P.2 | Sign up at [api-connect.eos.com](https://api-connect.eos.com/user-dashboard/); email `api.support@eosda.com` to activate the trial and ask only for current trial rate limits (RPM) and total monthly quota. The Cropper API creation flow, Render alias support, and Search request shape are already documented in `docs/review-findings.md` §3.5 and need no support clarification. | Phase 4 for Search; Phase 6 for Render | `EOSDA_API_KEY`; quota response recorded in the Phase 4 notes |
 | P.3 | Sign up at [clerk.com](https://clerk.com); create application; configure `http://localhost:5173` redirect; copy publishable + secret keys. | Phase 0.8 | `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` |
 
-**Pre-flight done when:** all three keys live in a local `.env` (never committed), the `.env.example` files in `apps/web` and `apps/api` document them, and the EOSDA support response is captured before closing the modules that depend on it. Search can proceed with just `EOSDA_API_KEY`; field-clipped Render tiles require either a confirmed `cropper_ref` flow or the documented Path B fallback.
+**Pre-flight done when:** all three keys live in a local `.env` (never committed), the `.env.example` files in `apps/web` and `apps/api` document them. Search and Render can proceed immediately on `EOSDA_API_KEY`; the support reply on rate limits/quota is informational only and does not block any module.
 
 ---
 
@@ -258,6 +258,8 @@ Depends on: 1.1.
 2. Add a tiny unit test that round-trips a polygon literal through pg via `app.db.execute`.
 
 **Done when:** Insert + select round-trips a small polygon and gets back the same coordinates within float tolerance.
+
+> **Polygon ser/des contract.** Drizzle's built-in `geometry()` column type only auto-converts `Point` (see [`docs/review-findings.md` §3.1](./review-findings.md#31-phase-01--drizzle--postgis-for-polygons)). For polygons we treat the column as opaque on insert/select and route every read/write through the helpers above so the SRID 4326 tag and `ST_AsGeoJSON` projection stay consistent. The matching CHECK constraints in `apps/api/src/db/schema.ts` (`fields_geometry_valid`, `fields_geometry_srid`) enforce the same invariants at the database. Note also the open Drizzle bug [#3040](https://github.com/drizzle-team/drizzle-orm/issues/3040): `drizzle-kit generate` can emit `geometry(point)` for a polygon column — review every generated migration before commit. Our `0000_green_swarm.sql` already encodes `geometry(Polygon,4326)` correctly.
 
 ### Module 1.4 — Shared zod schemas (fields + geometry) ✅ (completed 2026-05-08)
 
@@ -569,7 +571,7 @@ Depends on: 2.5, 3.5.
 
 ## Phase 4 — EOSDA warm-up service
 
-**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that discovers the latest available Sentinel-2 scene metadata for the polygon and upserts that scene into `cached_scenes`. It also creates/reuses an EOSDA Render `cropper_ref` only after the Cropper API creation flow is confirmed; until then, `eosda_cropper_ref` remains `NULL` and later render tiles are scene-wide under the field outline. The POST response is fast either way. Do **not** prefetch six months of imagery, statistics, or tiles during field creation; the timeline is expanded later through the cache-first scenes route.
+**Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that (a) creates and persists an EOSDA Render `cropper_ref` for the polygon via the documented `POST /api/render/cropper/` endpoint and (b) discovers the latest available Sentinel-2 scene metadata via Search and upserts that scene into `cached_scenes`. The two requests run independently. The POST response is fast: warm-up is fire-and-forget. Do **not** prefetch six months of imagery, statistics, or tiles during field creation; the timeline is expanded later through the cache-first scenes route.
 
 > Design note: EOSDA Search is the source of available Sentinel-2 dates. Search still requires a date range, so "latest available" means querying a configurable recent window with `sort: { date: 'desc' }` and a small `limit`, then expanding the window only if no scene is found.
 
@@ -587,18 +589,18 @@ Depends on: 0.4, 0.8.
 
 **Done when:** Unit tests prove request construction/error mapping, and an optional `RUN_EOSDA_LIVE=1` smoke can hit Search with a tiny `limit` against a known polygon without leaking the API key in logs.
 
-### Module 4.2 — Cropper-ref creation/reuse (conditional)
+### Module 4.2 — Cropper-ref creation/reuse
 
 Depends on: 4.1, 1.2.
 
 1. Add `services/eosda-cropper.ts` with `getOrCreateCropperRef(field)`:
    - If `field.eosda_cropper_ref` is set, return it.
-   - If EOSDA support confirms the Cropper API creation endpoint, POST the field polygon as a GeoJSON Feature to that endpoint, capture the returned `cropper_ref`, and `UPDATE fields SET eosda_cropper_ref = $1 WHERE id = $2`.
-   - If the Cropper creation endpoint is still unknown, return `null` and let warm-up continue with scene discovery. Do not block field creation or scene caching on clipping.
+   - Otherwise POST the field polygon wrapped as a GeoJSON `Feature` to `POST /api/render/cropper/` (full spec: [`docs/review-findings.md` §3.5.3](./review-findings.md#353-cropper-api--full-spec)). Capture the 32-character hex `cropper_ref` from the response and `UPDATE fields SET eosda_cropper_ref = $1 WHERE id = $2`.
+   - On non-2xx response or network failure, log a structured error (`{ fieldId, status, body }`) and return `null` so warm-up continues with scene discovery. Do not block field creation or scene caching on clipping.
 
-> Note: EOSDA Field Management endpoints return a numeric `field_id`, but Render documents a separate optional `cropper_ref` from the Cropper API. Do not store Field Management `field_id` in `eosda_cropper_ref` unless EOSDA support confirms it is accepted as the Render `cropper_ref`. Keep `eosda_cropper_ref` as `TEXT` until the Cropper response type is known.
+> Schema note: `eosda_cropper_ref` is permanently `TEXT`. The Cropper response is a 32-character hex string; do not migrate to `INTEGER`/`BIGINT` and do not store EOSDA Field Management `field_id` here — that is a different identifier for a different system.
 
-**Done when:** If the Cropper API is confirmed, calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref`, and a second call returns the same value without a new EOSDA POST. If not confirmed, unit tests prove the function returns `null` without failing warm-up. (End-to-end "create field → cropper appears" verification waits until Module 4.6, when `warmField` is wired into `POST /api/fields`.)
+**Done when:** Calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref` with a 32-char hex hash, and a second call returns the same value without a new EOSDA POST. A unit test with a mocked `fetch` covers the failure path (returns `null`, logs error, leaves column NULL). End-to-end "create field → cropper appears" verification waits until Module 4.6.
 
 ### Module 4.3 — Search wrapper
 
@@ -608,6 +610,7 @@ Depends on: 4.1.
    - POSTs to `/api/lms/search/v2/sentinel2` with `intersection_validation: true`, `fields: ['date', 'sceneID', 'view_id', 'cloudCoverage', 'dataCoveragePercentage', 'tms']`, `limit`, `page`, `search.shape: <GeoJSON>`, `search.shapeRelation: 'CONTAINS'`, `search.cloudCoverage: { from: 0, to: 80 }`, date range, and `sort: { date: 'desc' }`.
    - Supports a `limit` option so callers can request only the latest scene during create warm-up (`limit: 1`) or a broader page for the analysis timeline.
    - Normalizes EOSDA's mixed response names: `sceneID → sceneId`, `view_id → viewId`, `date → sceneDate`, `cloudCoverage → cloudPercent`, `dataCoveragePercentage → dataCoveragePercent`, and `tms → tmsTemplate`.
+   - Treats `tmsTemplate` as stored metadata only. The Search docs may return `render.eosda.com` templates; app tiles must still go through our authenticated Render proxy built from `viewId`.
 
 **Done when:** A unit test mocks `fetch` and asserts the mapping.
 
@@ -629,12 +632,11 @@ Depends on: 4.2, 4.3, 4.4.
 
 1. Create `services/field-warmup.ts` exporting `warmField(fieldId)`:
    - Loads the field (by id) — log and return if missing.
-   - `getOrCreateCropperRef(field)`; this may return `null` until the Cropper API is confirmed.
-   - `searchLatestScene({ geometry: field.geometry })`, implemented as a latest-first Search over a configurable recent window, e.g. 90 days, with fallback expansion to 180/365 days if EOSDA returns no scenes.
-   - `upsertScenes(field.id, latestScene ? [latestScene] : [])`.
+   - Runs `getOrCreateCropperRef(field)` and `searchLatestScene({ geometry: field.geometry })` **in parallel** via `Promise.allSettled` (latest-first Search over a configurable recent window, e.g. 90 days, with fallback expansion to 180/365 days if EOSDA returns no scenes).
+   - On Search success, `upsertScenes(field.id, latestScene ? [latestScene] : [])`. Cropper persistence happens inside `getOrCreateCropperRef`; nothing else to do here for that branch.
    - Let unexpected errors reject. Module 4.6 owns the single `.catch(...)` that logs `{ fieldId }`, avoiding double-handling where the outer catch never fires.
 
-**Done when:** Calling `warmField(id)` from a scratch script populates the newest available row in `cached_scenes` when EOSDA has data for the polygon. It also populates `eosda_cropper_ref` only if the Cropper API path is confirmed; otherwise it logs the skip and continues.
+**Done when:** Calling `warmField(id)` from a scratch script populates the newest available row in `cached_scenes` when EOSDA has data for the polygon, and populates `eosda_cropper_ref` from a successful Cropper POST. If either upstream call fails, the failure is logged with `fieldId` and warm-up exits cleanly without throwing.
 
 ### Module 4.6 — Wire `warmField` into `POST /api/fields`
 
@@ -648,7 +650,7 @@ Depends on: 1.6, 4.5.
 ### Phase 4 exit criteria
 
 - `cached_scenes` has the newest available Sentinel-2 scene metadata within ~30 s of field creation when EOSDA has data for the polygon.
-- `eosda_cropper_ref` is either populated from a confirmed Cropper API flow or explicitly left `NULL` with a documented Path B fallback to scene-wide render tiles.
+- `eosda_cropper_ref` is populated from a successful Cropper API POST. If the POST fails, the column stays NULL and a structured log line records `{ fieldId, status, body }`; later Render tiles fall back to scene-wide imagery under the field outline.
 - If EOSDA returns an error, the POST still succeeds and a structured log line records the failure.
 - `EOSDA_API_KEY` never appears in client-visible network requests.
 - No imagery tiles or `mt_stats` tasks are fetched during field creation.
@@ -767,8 +769,8 @@ Depends on: 1.6, 4.4, 4.2.
    - Verify `auth.userId` owns `fieldId`.
    - Verify `(fieldId, viewId)` exists in `cached_scenes` (otherwise 404 — prevents enumerating arbitrary scenes through our quota).
    - Decode `viewId` from the query param before embedding it in the upstream path.
-   - Build upstream URL: `${EOSDA_BASE}/api/render/${viewId}/${band}/${z}/${x}/${y}` where `band` is the documented Sentinel-2 alias (`NDVI`, `EVI`, or `NDWI`), not a user-supplied arbitrary formula.
-   - Add query params: `CALIBRATE=1`, `mimetype=image/png`, and `cropper_ref` from the field if present. Use `COLORMAP`/`MIN_MAX` as visualization params when live testing shows an alias returns grayscale or needs explicit contrast (`NDVI`/`EVI`: `RdYlGn`, `-1,1`; `NDWI`: `Blues`, `-1,1`).
+   - Build upstream URL: `${EOSDA_BASE}/api/render/${viewId}/${band}/${z}/${x}/${y}` where `band` is the documented Sentinel-2 alias (`NDVI`, `EVI`, or `NDWI`). Aliases are accepted directly by EOSDA — do **not** translate them to formulas (see [`docs/review-findings.md` §2.1](./review-findings.md#21--eosda-does-not-accept-index-names-as-bands--wrong)).
+   - Add query params **unconditionally**: `CALIBRATE=1`, `mimetype=image/png`, and the per-band `COLORMAP`/`MIN_MAX` defaults — `NDVI`/`EVI`: `RdYlGn` and `-1,1`; `NDWI`: `Blues` and `-1,1`. Setting these unconditionally is harmless if EOSDA's default already matches and required if it falls back to grayscale. Add `cropper_ref` from `fields.eosda_cropper_ref` when present.
    - Send `EOSDA_API_KEY` via `x-api-key` header. Only use `api_key` query fallback if a live Render test proves header auth is rejected, and never log that full URL.
    - Stream the upstream PNG response back to the client.
    - Set `Cache-Control: private, max-age=86400`.
@@ -842,7 +844,7 @@ Depends on: 1.6, 4.4, 4.1.
    - Body: `{ fieldId, indexes?: ('NDVI'|'EVI'|'NDWI')[], dateRange? }` (default indexes `['NDVI']`, max 3 per [`plan.md` EOSDA gotchas](./plan.md#eosda-specific)).
    - Auth + ownership check on `fieldId`.
    - Cache-first: read `cached_ndvi_stats` for `(fieldId, viewId, index)` across the listed `view_ids` (the route may use the cached scenes table to know which `view_ids` to consider).
-   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the polygon + date range, `sensors: ['sentinel2']`, a unique `reference`, and `cloud_masking_level: 1`.
+   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the field geometry + date range, `sensors: ['sentinel2']`, a unique `reference`, and `cloud_masking_level: 1`. Do not replace `geometry` with `cropper_ref`; current EOSDA Statistics docs document `cropper_ref` for Render/imagery contexts, not `mt_stats`.
    - Poll `GET /api/gdw/api/<task_id>` every ~2s until completion. Use the returned `task_timeout` as the upstream cap, but cap the HTTP request wait to a user-safe maximum (60s for v2); on timeout return `504 { error: 'STATS_TIMEOUT', taskId }` so the frontend can retry instead of hanging.
    - Normalize the nested response shape: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].average`/`median`/`p10`/`p90`/etc. Map `average` to the app's `mean` column/DTO field before upserting to `cached_ndvi_stats`.
 2. Add `services/stats-cache.ts` to encapsulate the cache reads/writes (mirrors `scene-cache.ts`).
@@ -951,9 +953,8 @@ Depends on: 8.1, 8.2.
 |--------|------|---------------|-------|
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
-| 4.2 | Confirm EOSDA Cropper API endpoint/request format for creating a Render `cropper_ref` | Before requiring field-clipped NDVI tiles | Path B is accepted for v2: leave `eosda_cropper_ref` NULL and render scene-wide tiles under the field outline. Do not substitute Field Management `field_id` unless EOSDA confirms it is accepted by Render as `cropper_ref`. |
-| 4.3 | Live-test EOSDA Search edge cases | Phase 4 | Confirm no-scene behavior (`results: []` vs error) and keep `sentinel2` as the dataset id unless a live request requires `sentinel2l2a`. |
-| 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale, add explicit `COLORMAP`/`MIN_MAX`. |
+| 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
+| 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
 ---
 

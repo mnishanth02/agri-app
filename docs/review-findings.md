@@ -1,830 +1,992 @@
-# Plan & Implementation Review Findings
+# viz-crop — Verification & Correction Reference
 
-> Generated: 2026-05-09  
-> Scope: `plan.md`, `implementation.md` — cross-checked against official docs for terra-draw, EOSDA API, Clerk, MapLibre, and @esri/maplibre-arcgis.  
-> Purpose: Identify corrections, gaps, and open questions before continuing Phase 2/3 implementation.
-
----
-
-## Table of Contents
-
-1. [Package Validation — What's Confirmed](#1-package-validation--whats-confirmed)
-2. [Terra Draw — Corrections & Confirmations](#2-terra-draw--corrections--confirmations)
-3. [EOSDA API — Detailed Corrections](#3-eosda-api--detailed-corrections)
-4. [Cross-Document Issues](#4-cross-document-issues)
-5. [Architecture Gaps](#5-architecture-gaps)
-6. [Action Items](#6-action-items)
+> **Purpose.** This document is the single authoritative reference derived from primary sources (vendor docs, GitHub repos, npm registry) for every external library and API used in viz-crop. Use it to (a) update `plan.md`, `architecture.md`, and `implementation.md` going forward, and (b) replace the misleading sections of `review-findings.md`.
+>
+> **Verification date:** 10 May 2026 (corrected 10 May 2026 — see correction note in §3.3 about `@esri/maplibre-arcgis` version).
+> **Method:** Each claim below is cross-referenced against the official vendor documentation URL listed in §6. No project-internal context was treated as authoritative during verification.
+> **Status of the project:** Phases 0–3 shipped and audited against this document; Phase 4 (EOSDA warm-up) starts next. Phase 0–3 audit results are recorded inline in §4.A1 / A2 / A5.
 
 ---
 
-## 1. Package Validation — What's Confirmed
+## Table of contents
 
-| Package | Plan Says | Actual | Status |
-|---|---|---|---|
-| `@esri/maplibre-arcgis` | `^1.2.0`, `BasemapStyle.applyStyle()` | ✅ Installed at `^1.2.0`, API confirmed | ✅ Correct |
-| ArcGIS style name | `'arcgis/imagery'` then switch if no labels | Code already uses `'arcgis/imagery/standard'` | ⚠️ Plan outdated — update plan to specify `/standard` directly |
-| `@clerk/react` | Clerk Core 3, replaces `@clerk/clerk-react` | ✅ Installed at `6.6.1`, correct package | ✅ Correct |
-| `@clerk/fastify` | `clerkPlugin()` + `getAuth()` + `CLERK_SECRET_KEY` | ✅ Installed at `3.1.24`, all APIs confirmed | ✅ Correct |
-| `maplibre-gl` | `^5.24.0`, `transformRequest` at construction | ✅ Confirmed, pinned v5 correct | ✅ Correct |
-| `terra-draw` | Main package | ✅ Separate npm package, correct name | ✅ Correct |
-| `terra-draw-maplibre-gl-adapter` | Separate adapter package | ✅ Correct — adapters are intentionally separate packages | ✅ Correct |
+1. [Document trust hierarchy](#1-document-trust-hierarchy)
+2. [Errors in `review-findings.md`](#2-errors-in-review-findingsmd)
+3. [Verified specs by phase](#3-verified-specs-by-phase)
+   - [3.1 Phase 0/1 — Drizzle + PostGIS for polygons](#31-phase-01--drizzle--postgis-for-polygons)
+   - [3.2 Phase 0 — Clerk + Fastify](#32-phase-0--clerk--fastify)
+   - [3.3 Phase 2 — MapLibre + ArcGIS basemap](#33-phase-2--maplibre--arcgis-basemap)
+   - [3.4 Phase 3 — terra-draw](#34-phase-3--terra-draw)
+   - [3.5 Phase 4 — EOSDA hosts, auth, Cropper, Search](#35-phase-4--eosda-hosts-auth-cropper-search)
+   - [3.6 Phase 6 — EOSDA Render API](#36-phase-6--eosda-render-api)
+   - [3.7 Phase 7 — EOSDA Statistics API](#37-phase-7--eosda-statistics-api)
+4. [Action items (prioritized)](#4-action-items-prioritized)
+5. [Genuinely unresolved items](#5-genuinely-unresolved-items)
+6. [Source citations](#6-source-citations)
+7. [Appendix A — Drop-in code snippets](#appendix-a--drop-in-code-snippets)
 
 ---
 
-## 2. Terra Draw — Corrections & Confirmations
+## 1. Document trust hierarchy
 
-**Source:** https://github.com/JamesLMilner/terra-draw
+When two project docs disagree, use this order:
 
-### 2.1 Package structure — Confirmed
-
-Both packages are separate npm installs, which is intentional:
-```text
-terra-draw                        # core + modes + validators
-terra-draw-maplibre-gl-adapter    # MapLibre-specific adapter
-```
-
-### 2.2 Class names — All confirmed correct
-
-| Plan references | Actual export | Status |
+| Source | Trust | Notes |
 |---|---|---|
-| `TerraDrawMapLibreGLAdapter` | From `terra-draw-maplibre-gl-adapter` | ✅ Correct |
-| `TerraDrawPolygonMode` | From `terra-draw` | ✅ Correct |
-| `ValidateNotSelfIntersecting` | From `terra-draw` | ✅ Correct |
-| `ValidateMinAreaSquareMeters` | From `terra-draw` | ✅ Available (plan doesn't use but good to know) |
-| `ValidateMaxAreaSquareMeters` | From `terra-draw` | ✅ Available (plan doesn't use but good to know) |
+| This document | ✅ Highest | Verified against primary sources on 10 May 2026; self-correction note in §3.3 about `@esri/maplibre-arcgis` version |
+| Vendor docs linked in §6 | ✅ Highest | Re-verify before relying on details older than ~6 months |
+| `plan.md`, `architecture.md` | ✅ Aligned (10 May 2026) | A8/A9 deltas applied |
+| `implementation.md` Phases 4–8 | ✅ Aligned (10 May 2026) | A3/A4/A7 deltas applied |
+| `implementation.md` Phases 0–3 | ✅ Audited (10 May 2026) | Code matches verified specs (see §4 A1/A2/A5) |
+| Older drafts of `review-findings.md` | ❌ Untrusted | This document supersedes them; corrections noted in §2 |
 
-### 2.3 Snapshot methods — Confirmed
+---
 
-| Method | Behavior | Status |
-|---|---|---|
-| `draw.getSnapshot()` | Returns ALL features as deep-copy array | ✅ Exists |
-| `draw.getSnapshotFeature(id)` | Returns ONE feature by ID as deep-copy | ✅ Exists |
+## 2. Errors in `review-findings.md`
 
-**Implementation note for Module 3.2:** Use `draw.getSnapshot().filter(f => f.properties.mode === 'polygon')` to get just the polygon feature after a `finish` event.
+`review-findings.md` was supposed to ground-truth the plan. Independent verification finds that several of its corrections are factually wrong and would introduce bugs if applied. The errors below should be removed or corrected before the document is used as input again.
 
-### 2.4 Events — Confirmed
+### 2.1 ❌ "EOSDA does not accept index names as bands" — wrong
 
-| Event | Payload | When fired |
-|---|---|---|
-| `change` | `(ids[], type, context)` — type is `"create" \| "update" \| "delete" \| "styling"` | On any store mutation |
-| `finish` | `{ action, mode }` — action is `"draw" \| "dragFeature" \| ...` | When drawing completes |
-| `select` / `deselect` | feature id | Selection changes |
+- **Cited locations in review-findings.md:** §3.3, §5.1, §8.6 (marked as a "Blocker — do first").
+- **The wrong claim:** the Render proxy must translate `band=NDVI` to the formula `(B08-B04)/(B08+B04)` because EOSDA only accepts bands or formulas, not aliases.
+- **Ground truth:** EOSDA's own [Quickstart page](https://doc.eos.com/docs/quickstart/) shows this exact example:
 
-**Implementation note:** The `finish` event with `action === 'draw'` is the right trigger to read the completed polygon via `getSnapshot()`.
+  ```
+  GET https://api-connect.eos.com/api/render/S2/36/U/XU/2016/5/2/0/NDVI/10/611/354?api_key=<your_api_key>
+  ```
 
-### 2.5 Validation placement — Confirmed
+  Aliases `NDVI`, `EVI`, `NDWI`, etc. are valid path-segment values. Formulas are an additional capability, not a replacement. The [Image Bands docs](https://doc.eos.com/docs/render/) confirm both forms.
+- **Impact if followed:** an unnecessary `INDEX_TO_BAND` translation layer adds maintenance surface, makes the code harder to read, and risks formula-encoding bugs (e.g., `/` characters inside the formula being misinterpreted as path separators by intermediate proxies).
+- **What to do:** keep the alias-based approach in `implementation.md` Module 6.3. Treat formulas as an explicitly-documented advanced fallback only.
 
-Validators like `ValidateNotSelfIntersecting` are passed to the mode config:
+### 2.2 ❌ "Cropper API endpoint/request format needs EOSDA support email" — wrong
+
+- **Cited locations:** §3.4, §5.2, §8.3, §8.7 Q3.
+- **The wrong claim:** the Cropper API creation flow is undocumented and requires a clarification email before it can be implemented.
+- **Ground truth:** the endpoint is [documented in full](https://developers.eos.com/cropper.html). The doc lives on EOSDA's older docs site (`developers.eos.com`), while the current `doc.eos.com` Render/Cloud-mask and Colorization pages reference `cropper_ref` as the AOI clipping handle. EOSDA confirms that [`gate.eos.com` and `api-connect.eos.com` are the same backend](https://doc.eos.com/docs/quickstart/what-did-we-change/).
+- **Impact if followed:** unnecessary "Path B" fallback paths in Modules 4.2 and 6.3 ship as live code, NDVI tiles never get clipped to the field polygon, and the team waits for support instead of implementing.
+- **What to do:** implement Path A directly. See §3.5.3 below for the exact spec.
+
+### 2.3 ❌ "`arcgis/imagery/standard` is the hybrid with labels" — wrong
+
+- **Cited location:** §4.5.
+- **The wrong claim:** the `arcgis/imagery/standard` style is the hybrid satellite-plus-labels variant.
+- **Ground truth:** per Esri's [own basemap-styles docs](https://developers.arcgis.com/rest/basemap-styles/arcgis-imagery-standard-style-get/) and the [Flutter API enum](https://developers.arcgis.com/flutter/beta/api-reference/api/arcgis_maps/BasemapStyle.html), the three imagery styles are:
+
+  | Style string | What it contains |
+  |---|---|
+  | `arcgis/imagery` | **Composite:** raster satellite imagery + vector labels |
+  | `arcgis/imagery/standard` | Raster satellite imagery only — **no labels** |
+  | `arcgis/imagery/labels` | Labels only, no raster |
+
+- **Impact if followed:** if Phase 2 actually shipped using `/standard` (per the review-findings claim that "the actual lib/arcgis.ts uses arcgis/imagery/standard"), the production map has no road or place labels — a visible bug.
+- **What to do:** audit `apps/web/src/lib/arcgis.ts` and confirm it passes `'arcgis/imagery'` (not `/standard`). If wrong, two-character fix.
+
+### 2.4 ⚠️ Field Management `id` migration footnote — misleading
+
+- **Cited location:** §3.5.
+- **The misleading claim:** "consider migrating `eosda_cropper_ref` to `INTEGER`/`BIGINT` after EOSDA confirms the Cropper response type."
+- **Ground truth:** the Cropper API response is a 32-character hex string (e.g., `3eb51ea04776e6ae6bb665504e3c5ffb`). Field Management `id` is a separate numeric ID for a different system. Storing one in the other is wrong by design, and `TEXT` is permanently correct for `eosda_cropper_ref`.
+- **What to do:** delete the footnote.
+
+### 2.5 ⚠️ Open-questions table is largely stale
+
+- **Cited location:** §8.7.
+- Q1 (formula encoding): not the right question; aliases are the primary path, see §2.1.
+- Q3 (Cropper endpoint): resolved by docs, see §2.2.
+- Q4 (`sentinel2` vs `sentinel-2`): resolved by docs — `sentinel2` is the correct dataset id; `sentinel2l2a` is a separate dataset, not a synonym.
+- Q5 (no-results behavior): partially answered — the [Search docs](https://doc.eos.com/docs/search/simple-search/) show responses include `meta.found` and `results`. With zero results, expect `meta.found: 0` and `results: []`. Worth a 30-second live test, but not blocking.
+
+The only remaining genuinely useful EOSDA support question is the trial rate limit (RPM) and quota.
+
+### 2.6 ✅ Sections of `review-findings.md` that are actually correct
+
+These should be retained:
+
+- §3.6 Statistics API request/response shape
+- §5.4 Clerk token-refresh pattern via `tokenRef` and `transformRequest`
+- §5.5 Layer ordering rules for MapLibre stack
+- §5.6 `warmField` error-handler dedup
+- §8.4 Search request body field names
+- §8.5 NdviLayer tile URL construction (`encodeURIComponent` on `viewId`)
+
+When rewriting `review-findings.md`, keep these sections, delete the rest.
+
+---
+
+## 3. Verified specs by phase
+
+### 3.1 Phase 0/1 — Drizzle + PostGIS for polygons
+
+#### Reality check
+
+Drizzle's built-in `geometry()` column type **only supports `Point` natively**. The Drizzle docs say verbatim:
+
+> "The current release has a predefined type: `point`, which is the `geometry(Point)` type in the PostgreSQL PostGIS extension. **You can specify any string there if you want to use some other type**."
+>
+> — [Drizzle PostgreSQL extensions docs](https://orm.drizzle.team/docs/extensions/pg)
+
+What this means concretely:
+
+- The `mode: 'xy'` and `mode: 'tuple'` ergonomic helpers only work for `Point`.
+- For `Polygon`, you write raw SQL fragments for ser/des, OR define a custom column type using `customType()` with a `wkx`-based fromDriver.
+- There is an [open issue](https://github.com/drizzle-team/drizzle-orm/issues/3040) where `drizzle-kit generate` emits `geometry(point)` instead of the configured `geometry(Polygon, 4326)` for polygon columns. Hand-edit the first migration after generation.
+
+#### The pattern to use
+
+In `db/schema.ts`:
+
 ```ts
-new TerraDrawPolygonMode({
-  validation: (feature, { updateType }) => {
-    if (updateType === 'finish' || updateType === 'commit') {
-      return ValidateNotSelfIntersecting(feature);
-    }
-    return { valid: true };
-  }
-})
-```
-Triggers on `"finish"`, `"commit"`, `"provisional"` — aligns with plan.
+import { pgTable, uuid, text, timestamp, geometry } from 'drizzle-orm/pg-core';
 
-**Summary: Terra Draw section of the plan is accurate. No corrections needed.**
+export const fields = pgTable('fields', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // ... other columns
+  // Drizzle accepts the `polygon` type string but does NOT auto-serialize.
+  // Treat `geometry` as opaque on insert/select; use SQL helpers in service code.
+  geometry: geometry('geometry', { type: 'polygon', srid: 4326 }).notNull(),
+});
+```
+
+In `apps/api/src/services/geom.ts`:
+
+```ts
+import { sql, type SQL } from 'drizzle-orm';
+import type { Polygon } from 'geojson';
+
+/** Use in `.values({ geometry: polygonToSql(polygon) })` */
+export function polygonToSql(polygon: Polygon): SQL {
+  return sql`ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(polygon)}), 4326)`;
+}
+
+/** Use in `.select({ geometry: sqlToPolygon(fields.geometry), ... })` */
+export function sqlToPolygon(column: typeof fields.geometry): SQL<Polygon> {
+  return sql<Polygon>`ST_AsGeoJSON(${column})::json`;
+}
+```
+
+#### First migration must enable PostGIS
+
+Drizzle does not auto-create the extension. The first migration file must contain:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+#### After `drizzle-kit generate`
+
+Inspect the generated SQL for the polygon column. If it says `geometry(point)`, hand-edit it to `geometry(Polygon, 4326)`. Track this in CI: `drizzle-kit generate` should be reviewed before commit, not auto-applied.
 
 ---
 
-## 3. EOSDA API — Detailed Corrections
+### 3.2 Phase 0 — Clerk + Fastify
 
-**Source:** https://doc.eos.com
+Confirmed against [official Fastify quickstart](https://clerk.com/docs/quickstarts/fastify) and [`clerkPlugin()` reference](https://clerk.com/docs/reference/fastify/clerk-plugin).
 
-### 3.1 API Key — Clarification needed
+#### Verified usage
 
-The plan says "injects `EOSDA_API_KEY` via header where supported, query fallback otherwise."
+```ts
+import 'dotenv/config';                    // MUST run before any @clerk/fastify import
+import Fastify from 'fastify';
+import { clerkPlugin, getAuth } from '@clerk/fastify';
 
-From EOSDA docs:
-- Quickstart shows header: `-H 'x-api-key: <your_api_key>'`
-- All endpoint example URLs show query param: `?api_key=<your_api_key>`
+const fastify = Fastify({ logger: true });
 
-**Decision needed:** Pick one approach for the client. Recommendation: use **header `x-api-key`** for all calls (more secure, key never appears in server logs as a URL component). The query param approach logs the key in access logs.
+await fastify.register(clerkPlugin, {
+  publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+  secretKey: process.env.CLERK_SECRET_KEY,
+});
 
-**Action:** Update Module 4.1 (`eosda-client.ts`) to inject `x-api-key` header, not query param.
+// In a route handler:
+const { isAuthenticated, userId } = getAuth(request);
+if (!isAuthenticated) return reply.code(401).send({ error: 'Unauthorized' });
+```
+
+#### Notes
+
+- `isAuthenticated` is the current canonical check; `userId` truthy still works as a legacy check.
+- `dotenv` must be imported **before** `@clerk/fastify` because the plugin reads env at module-init time. The plan correctly documents this.
+- For machine-to-machine tokens, pass `acceptsToken: 'any'` to `getAuth()`. Not needed for v2 of viz-crop.
 
 ---
 
-### 3.2 Search endpoint — Confirmed correct + request body verified
+### 3.3 Phase 2 — MapLibre + ArcGIS basemap
 
-```text
-POST https://api-connect.eos.com/api/lms/search/v2/<dataset_id>
+#### MapLibre version
+
+- **Latest stable:** `maplibre-gl@5.24.0` (April 2026).
+- **Next major:** `maplibre-gl@6.0.0` (in `next` channel; ESM-only, drops UMD bundles, requires WebGL2). Do not adopt for v2.
+- **Plan decision (pin to v5):** correct. Keep `^5.24.0` or pin exact.
+
+#### `@esri/maplibre-arcgis` version
+
+- **Latest published (npm `latest` dist-tag):** `1.2.0` (verified against the npm registry on 10 May 2026 — `https://registry.npmjs.org/@esri/maplibre-arcgis` returns `"dist-tags":{"beta":"1.0.0-beta.3","latest":"1.2.0"}`).
+- **Plan currently cites `^1.2.0`:** ✅ correct. The shipped Phase 2 install resolves to `1.2.0` and is functional.
+- **Correction note (10 May 2026):** an earlier draft of this document claimed `1.2.0` did not exist on npm and recommended pinning to `^1.1.0`. That claim was based on a stale read of the developers.arcgis.com API reference page. The npm registry is authoritative for published versions. **No package change is required.** Action item A2 in §4 has been retired — do not downgrade.
+
+#### Basemap style — definitive truth table
+
+Source: [Esri Basemap Styles types reference](https://developers.arcgis.com/rest/basemap-styles/arcgis-imagery-standard-style-get/), [Flutter API enum](https://developers.arcgis.com/flutter/beta/api-reference/api/arcgis_maps/BasemapStyle.html), [Game Engine API reference](https://developers.arcgis.com/unity/api-reference/gameengine/map/arcgisbasemapstyle/).
+
+| String | Composition | Use for v2? |
+|---|---|---|
+| `arcgis/imagery` | Composite: raster satellite + vector labels | ✅ **Yes** — this is "satellite + roads/places" |
+| `arcgis/imagery/standard` | Raster satellite imagery only, no labels | ❌ No |
+| `arcgis/imagery/labels` | Labels only, no raster | ❌ No |
+
+#### Verified API
+
+```ts
+import maplibregl from 'maplibre-gl';
+import maplibreArcGIS from '@esri/maplibre-arcgis';
+
+const map = new maplibregl.Map({ container: 'map', center: [75.7139, 15.3173], zoom: 8 });
+
+const basemapStyle = maplibreArcGIS.BasemapStyle.applyStyle(map, {
+  style: 'arcgis/imagery',          // composite — includes labels
+  token: process.env.VITE_ESRI_API_KEY,
+});
 ```
 
-For Sentinel-2: `dataset_id = sentinel2`  
-Full URL: `POST https://api-connect.eos.com/api/lms/search/v2/sentinel2`
+After `applyStyle` resolves (style.load fired), the map style will contain raster `imagery` layers plus vector `symbol` layers for labels. Use `findFirstSymbolLayerId(map)` to discover the first label layer at runtime; never hard-code Esri layer IDs.
 
-**Confirmed minimal request body:**
+---
+
+### 3.4 Phase 3 — terra-draw
+
+Confirmed against the [official getting-started guide](https://github.com/JamesLMilner/terra-draw/blob/main/guides/1.GETTING_STARTED.md) and [adapters guide](https://github.com/JamesLMilner/terra-draw/blob/main/guides/3.ADAPTERS.md).
+
+| Package | Verified version (May 2026) | MapLibre peer support |
+|---|---|---|
+| `terra-draw` | `1.29.0` | n/a |
+| `terra-draw-maplibre-gl-adapter` | latest (kept in lockstep) | MapLibre v4 / v5 |
+
+#### Verified API
+
+```ts
+import maplibregl from 'maplibre-gl';
+import { TerraDraw, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw';
+import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
+
+// Style must be loaded before creating Terra Draw
+map.on('style.load', () => {
+  const draw = new TerraDraw({
+    adapter: new TerraDrawMapLibreGLAdapter({ map }),  // no `lib` param needed
+    modes: [new TerraDrawPolygonMode(), new TerraDrawSelectMode({ /* ... */ })],
+  });
+
+  draw.start();
+  draw.setMode('polygon');
+});
+```
+
+Plan and shipped Phase 3 code already match this. No corrections.
+
+---
+
+### 3.5 Phase 4 — EOSDA hosts, auth, Cropper, Search
+
+#### 3.5.1 Hosts — both work, prefer `api-connect.eos.com`
+
+Direct quote from [EOSDA migration page](https://doc.eos.com/docs/quickstart/what-did-we-change/):
+
+> "The URL name has been changed from `https://gate.eos.com` to `https://api-connect.eos.com`. While the old gate URL will continue to be supported, we encourage users to transition to the new api-connect URL."
+
+**Implication:** they are the same backend. No host fallback logic needed. Use `https://api-connect.eos.com` everywhere.
+
+#### 3.5.2 Authentication
+
+- **Preferred:** `x-api-key: <key>` HTTP header on every request.
+- **Fallback only:** `?api_key=<key>` query parameter — only if a specific endpoint rejects the header (none observed in v2 surface).
+- **Logging rule:** never log the full URL when it carries the key. Log path + status only.
+
+#### 3.5.3 Cropper API — full spec
+
+**Endpoint:**
+
+```
+POST https://api-connect.eos.com/api/render/cropper/
+```
+
+**Headers:**
+
+```
+Content-Type: application/json
+x-api-key: <EOSDA_API_KEY>
+```
+
+**Body:** GeoJSON Feature with a `Polygon` geometry. Properties may be empty.
+
 ```json
 {
-  "search": {
-    "date": { "from": "2023-06-01", "to": "2023-07-31" },
-    "cloudCoverage": { "from": 0, "to": 90 },
-    "shape": {
-      "type": "Polygon",
-      "coordinates": [[[lon, lat], ...]]
-    },
-    "shapeRelation": "CONTAINS"
-  },
+  "type": "Feature",
+  "properties": {},
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [[lon, lat], [lon, lat], ... , [lon, lat]]
+    ]
+  }
+}
+```
+
+**Response (200 OK):**
+
+```json
+{ "cropper_ref": "3eb51ea04776e6ae6bb665504e3c5ffb" }
+```
+
+The returned value is a 32-character hex string. Persist it verbatim in `fields.eosda_cropper_ref` (`TEXT` column).
+
+**Re-use:** the same `cropper_ref` is reusable for the polygon's lifetime. There's no documented expiration; treat the `(field_id, cropper_ref)` mapping as durable. If the field polygon is later edited, create a new cropper and update the column.
+
+**Use with Render tiles (preview):**
+
+```
+GET https://api-connect.eos.com/api/render/<view_id>/<band>/<z>/<x>/<y>?cropper_ref=<hash>
+```
+
+— see §3.6 for full Render spec.
+
+**Source:** [Cropper API docs](https://developers.eos.com/cropper.html); cross-references at [Cloud-mask tile API](https://doc.eos.com/docs/render/cloud-mask/), [Colorization API](https://doc.eos.com/docs/colorization/colorization-api/).
+
+#### 3.5.4 Search API — full spec
+
+**Endpoint (single dataset, recommended):**
+
+```
+POST https://api-connect.eos.com/api/lms/search/v2/sentinel2
+```
+
+**Headers:**
+
+```
+Content-Type: application/json
+x-api-key: <EOSDA_API_KEY>
+```
+
+(The docs show `Content-Type: text/plain` in some examples even though the body is JSON. Start with `application/json`; if the Module 4.1 live Search smoke rejects it, fall back to `text/plain` for Search only.)
+
+**Body:**
+
+```json
+{
+  "intersection_validation": true,
+  "fields": [
+    "sceneID",
+    "view_id",
+    "date",
+    "cloudCoverage",
+    "dataCoveragePercentage",
+    "tms"
+  ],
   "limit": 10,
   "page": 1,
+  "search": {
+    "date": { "from": "2026-02-09", "to": "2026-05-10" },
+    "cloudCoverage": { "from": 0, "to": 80 },
+    "shape": { "type": "Polygon", "coordinates": [ [ [lon, lat], ... ] ] },
+    "shapeRelation": "CONTAINS"
+  },
   "sort": { "date": "desc" }
 }
 ```
 
-Field names confirmed: `search.shape`, `search.shapeRelation`, `search.cloudCoverage`, `search.date` are all correct.
+**Response shape:**
 
-**Response fields (exact names as returned by EOSDA) — CORRECTIONS from original findings:**
 ```json
 {
+  "meta": { "found": 17, "page": 1, "limit": 10, "name": "satellite-meta-service" },
   "results": [
     {
-      "sceneID": "...",
-      "view_id": "S2/36/U/XU/2016/5/2/0",
-      "date": "2016-05-02",
-      "cloudCoverage": 15.3,
-      "tms": "https://...",
-      "dataCoveragePercentage": 98.1,
-      "sunElevation": 42.1
+      "sceneID": "S2B_tile_20230731_16TEL_0",
+      "view_id": "S2/16/T/EL/2023/7/31/0",
+      "date": "2023-07-31",
+      "cloudCoverage": 2.0,
+      "dataCoveragePercentage": 100.0,
+      "sunElevation": 62.71,
+      "tms": "https://render.eosda.com/S2/16/T/EL/2023/7/31/0/{band}/{z}/{x}/{y}"
     }
-  ],
-  "meta": { "found": 42, "page": 1, "limit": 10 }
+    // ...
+  ]
 }
 ```
 
-**Corrections vs earlier assumptions in this doc:**
-- `sceneID` (camelCase), NOT `scene_id`
-- `date` (not `timestamp`)
-- `cloudCoverage` (not `cloud`)
-- `dataCoveragePercentage` (not `data_coverage_percentage`)
-- Response is `results[]` with a `meta` pagination wrapper
+**Field name normalization (response → app):**
 
-**Module 4.3 normalization map (confirmed):**
-```typescript
-sceneID                → sceneId
-view_id                → viewId
-date                   → sceneDate
-cloudCoverage          → cloudPercent
-dataCoveragePercentage → dataCoveragePercent
-tms                    → tmsTemplate
-```
-
-**Plan is correct** on the Search endpoint URL and request field names.
-
----
-
-### 3.3 Render endpoint — MAJOR CORRECTION REQUIRED
-
-**What the plan says (Module 6.3):**
-> Upstream URL is EOSDA `/api/render/<view_id>/<bands>/<z>/<x>/<y>` and `band=NDVI` passed from the proxy.
-
-**Actual EOSDA Render API:**
-```text
-GET https://api-connect.eos.com/api/render/<view_id>/<bands>/<z>/<x>/<y>?api_key=...
-```
-
-Example:
-```text
-https://api-connect.eos.com/api/render/S2/36/U/XU/2016/5/2/0/B04,B03,B02/10/611/354?api_key=...
-```
-
-**Critical gap: EOSDA does NOT accept index names as bands.**
-
-The `<bands>` parameter accepts:
-- Single band: `B04`
-- RGB composite: `B04,B03,B02`
-- **Virtual band formula:** `(B08-B04)/(B08+B04)` ← this is NDVI
-
-**The proxy must translate `band=NDVI` → the actual formula.** Required translations:
-
-| Index | EOSDA band formula | Colormap for visualization |
+| EOSDA response | App-side `SceneDto` | Notes |
 |---|---|---|
-| NDVI | `(B08-B04)/(B08+B04)` | `RdYlGn` (red-yellow-green) |
-| EVI | `2.5*((B08-B04)/(B08+6*B04-7.5*B02+1))` | `RdYlGn` |
-| NDWI | `(B03-B08)/(B03+B08)` | `Blues` |
+| `sceneID` | `sceneId` | EOSDA uses capital ID; app uses camelCase |
+| `view_id` | `viewId` | EOSDA snake_case → app camelCase |
+| `date` (string `YYYY-MM-DD`) | `sceneDate` | Disambiguate from arbitrary "date" |
+| `cloudCoverage` (0–100) | `cloudPercent` | Same scale |
+| `dataCoveragePercentage` | `dataCoveragePercent` | Same scale |
+| `tms` | `tmsTemplate` | URL with `{band}/{z}/{x}/{y}` placeholders; docs may return `render.eosda.com`, so store it as metadata only and build app tiles from `view_id` through our proxy |
 
-**Additional required query params for correct visualization:**
-```text
-MIN_MAX=-1,1         # contrast stretch over the full normalized-index data range
-COLORMAP=RdYlGn      # colormap name (matplotlib-compatible)
-CALIBRATE=1          # convert to surface reflectance
+**Empty-results behavior:** expected to return `200 OK` with `meta.found: 0` and `results: []`. Worth a 30-second live test to confirm but should not block Phase 4.
+
+**Multi-dataset variant:** `POST /api/lms/search/v2` (no dataset in path) accepts `search.satellites: ["sentinel2", "landsat8", ...]`. v2 of viz-crop only needs `sentinel2`.
+
+**Sources:** [Single dataset search](https://doc.eos.com/docs/search/simple-search/), [Multi-dataset search](https://doc.eos.com/docs/search/multi-dataset-search/).
+
+---
+
+### 3.6 Phase 6 — EOSDA Render API
+
+#### Endpoint
+
+```
+GET https://api-connect.eos.com/api/render/<view_id>/<band>/<z>/<x>/<y>
 ```
 
-**Without `COLORMAP`, the render endpoint returns a grayscale image — the NDVI heatmap will be grey, not the expected red-green color scale.**
+#### Path parameters
 
-**Corrected proxy route behavior (Module 6.3):**
+| Param | Example | Notes |
+|---|---|---|
+| `<view_id>` | `S2/16/T/EL/2023/7/31/0` | **Contains slashes**; receive as URL-encoded query param from the browser, decode before building the upstream URL. |
+| `<band>` | `NDVI` | Allowed for v2: `NDVI`, `EVI`, `NDWI`. Aliases work directly — no formula translation needed (see §2.1). |
+| `<z>/<x>/<y>` | `10/611/354` | Slippy-map tile coordinates, integers. |
+
+#### Query parameters
+
+| Param | Required | Value (v2) | Purpose |
+|---|---|---|---|
+| `cropper_ref` | Optional | Hash from §3.5.3 | Polygon-clipped tile (transparent outside AOI) |
+| `CALIBRATE` | Optional | `1` | Convert to surface reflectance |
+| `COLORMAP` | Optional; set by v2 proxy | `RdYlGn` (NDVI/EVI), `Blues` (NDWI) | Apply stable app-side visualization. EOSDA documents default range colorization for some aliases, but explicit values keep output predictable. |
+| `MIN_MAX` | Optional; set by v2 proxy | `-1,1` | Contrast stretch over normalized index range |
+| `mimetype` | Optional | `image/png` | Output format |
+
+**Auth:** `x-api-key` header (preferred), `?api_key=` query (fallback only).
+
+#### Verified example
+
+```
+GET https://api-connect.eos.com/api/render/S2/36/U/XU/2016/5/2/0/NDVI/10/611/354?api_key=<key>
+```
+
+— confirmed in [EOSDA Quickstart docs](https://doc.eos.com/docs/quickstart/) as a working example.
+
+#### Render proxy behavior (v2)
+
 ```ts
-const BAND_MAP = {
-  NDVI: { formula: '(B08-B04)/(B08+B04)', colormap: 'RdYlGn', minMax: '-1,1' },
-  EVI:  { formula: '2.5*((B08-B04)/(B08+6*B04-7.5*B02+1))', colormap: 'RdYlGn', minMax: '-1,1' },
-  NDWI: { formula: '(B03-B08)/(B03+B08)', colormap: 'Blues', minMax: '-1,1' },
+// apps/api/src/routes/eosda.render.ts (sketch)
+
+const ALLOWED_BANDS = new Set(['NDVI', 'EVI', 'NDWI']);
+const COLOR_DEFAULTS: Record<string, { COLORMAP: string; MIN_MAX: string }> = {
+  NDVI: { COLORMAP: 'RdYlGn', MIN_MAX: '-1,1' },
+  EVI:  { COLORMAP: 'RdYlGn', MIN_MAX: '-1,1' },
+  NDWI: { COLORMAP: 'Blues',  MIN_MAX: '-1,1' },
 };
-// Build upstream URL:
-// https://api-connect.eos.com/api/render/{viewId}/{formula}/{z}/{x}/{y}?MIN_MAX=...&COLORMAP=...&CALIBRATE=1
+
+// In handler:
+const viewId = decodeURIComponent(req.query.viewId as string);  // contains '/'
+const band = req.query.band as string;
+if (!ALLOWED_BANDS.has(band)) return reply.code(400).send({ error: 'BAD_BAND' });
+
+// Ownership check + cached_scenes existence check elided
+
+const params = new URLSearchParams({
+  CALIBRATE: '1',
+  mimetype: 'image/png',
+  ...COLOR_DEFAULTS[band],                 // safe to set unconditionally
+});
+if (field.eosda_cropper_ref) params.set('cropper_ref', field.eosda_cropper_ref);
+
+const upstream = `https://api-connect.eos.com/api/render/${viewId}/${band}/${z}/${x}/${y}?${params}`;
+const r = await fetch(upstream, { headers: { 'x-api-key': process.env.EOSDA_API_KEY! } });
+// ... stream r.body to reply, set Cache-Control: private, max-age=86400
 ```
 
-**Note on `view_id` slashes:** The `view_id` contains literal slashes (e.g., `S2/43/P/GK/2026/3/23/0`). When building the upstream `fetch()` URL server-side, this is fine — the slashes become part of the path as EOSDA expects. When receiving `viewId` from the browser via query param (`?viewId=S2/43/P/GK/...`), the value must be URL-decoded before embedding in the upstream path.
+**Key gotcha:** `view_id` contains literal `/` characters. The browser sends it as a URL-encoded query param (`?viewId=S2%2F16%2FT%2FEL%2F2023%2F7%2F31%2F0`); the proxy must `decodeURIComponent` before embedding it back into the upstream path. The MapLibre tile URL template uses `encodeURIComponent` on viewId once (the `{z}/{x}/{y}` placeholders themselves must remain unencoded so MapLibre can substitute).
+
+**Sources:** [Image Bands / Render docs](https://doc.eos.com/docs/render/), [Quickstart NDVI example](https://doc.eos.com/docs/quickstart/), [Cropper API docs](https://developers.eos.com/cropper.html).
 
 ---
 
-### 3.4 `cropper_ref` for clipped tiles — Documented parameter, creation flow needs verification
+### 3.7 Phase 7 — EOSDA Statistics API
 
-**What the plan says:**
-> Use EOSDA `cropper_ref` for field-clipped render tiles. Upstream URL includes `cropper_ref` from the field as a query param.
+#### Endpoints
 
-**What the official Render API docs show:**
-The documented render endpoint parameters include: `view_id`, `bands`, `z`, `x`, `y`, `api_key`, `MIN_MAX`, `CALIBRATE`, `COLORMAP`, `PANSHARPENING`, `CLUSTERING`, `CLUSTERS_NO`, `MIN_AREA`, and `cropper_ref`.
-
-**`cropper_ref` is documented as an optional AOI reference from the Cropper API that makes pixels outside the AOI transparent.** The remaining verification item is the Cropper creation request/response contract and whether its returned reference should be stored directly in `fields.eosda_cropper_ref`.
-
-**Options:**
-1. The Cropper API creation endpoint/request format may need confirmation from EOSDA support before implementation.
-2. The Field Management `id` (returned when you create a field via `/field-management`) is likely separate from Render `cropper_ref` unless EOSDA confirms otherwise.
-3. The app may need to clip NDVI tiles client-side (using the field polygon as a MapLibre clip mask) rather than relying on server-side clipping.
-
-**Action:** Add to the EOSDA activation email: *"What endpoint/request body creates a `cropper_ref` for polygon-clipped Render tiles, and what response field/value should we persist?"*
-
-**Until confirmed, the implementation should render unclipped NDVI tiles and apply the field polygon as a visual overlay (which we already do via `FieldLayer`). The user sees the NDVI heatmap under the white field outline — acceptable for v2.**
-
----
-
-### 3.5 Field Management (cropper_ref creation) — Confirmed with corrections
-
-**Endpoint:**
-```text
-POST https://api-connect.eos.com/field-management
-Header: x-api-key: <key>
-Content-Type: application/json
+```
+POST   https://api-connect.eos.com/api/gdw/api      # create task
+GET    https://api-connect.eos.com/api/gdw/api/<task_id>   # poll task
 ```
 
-**Request body:**
-```json
-{
-  "type": "Feature",
-  "properties": {
-    "name": "field name",
-    "group": "optional group"
-  },
-  "geometry": {
-    "type": "Polygon",
-    "coordinates": [[[lon, lat], ...]]
-  }
-}
-```
+#### Create-task body
 
-**Response:**
-```json
-{ "id": 12345, "area": 2.3 }
-```
-
-**Clarification:** The Field Management response `id` is a **number** (integer), not a string/UUID, but Render documents a separate optional `cropper_ref`. Keep the `fields.eosda_cropper_ref` column in `db/schema.ts` as `TEXT` until EOSDA confirms the Cropper response type and whether this Field Management `id` can be accepted as Render `cropper_ref`; consider migrating to `INTEGER`/`BIGINT` only after that confirmation.
-
-**Other field management endpoints:**
-```text
-GET    /field-management/<field_id>     # get field details
-PATCH  /field-management/<field_id>     # update field metadata
-DELETE /field-management/<field_id>     # delete field
-GET    /field-management/fields         # list all fields
-```
-
----
-
-### 3.6 Statistics endpoint — Confirmed with corrections
-
-**Task creation:**
-```text
-POST https://api-connect.eos.com/api/gdw/api
-Header: x-api-key: <key>
-```
-
-**Request body:**
 ```json
 {
   "type": "mt_stats",
   "params": {
     "bm_type": ["NDVI", "EVI", "NDWI"],
     "date_start": "2026-01-01",
-    "date_end": "2026-05-09",
+    "date_end":   "2026-05-09",
     "geometry": {
       "type": "Polygon",
-      "coordinates": [[[lon, lat], ...]]
+      "coordinates": [ [ [lon, lat], ... ] ]
     },
-    "reference": "unique-request-id",
+    "reference": "<unique-request-id>",
     "sensors": ["sentinel2"],
     "limit": 100,
     "max_cloud_cover_in_aoi": 80,
-    "cloud_masking_level": 1
+    "cloud_masking_level": 1,
+    "exclude_cover_pixels": true
   }
 }
 ```
 
-**Task creation response:**
+**Standalone verification correction (10 May 2026):** keep `mt_stats` geometry-based. Current EOSDA Statistics docs list `params.geometry` as the AOI input for `mt_stats`; `cropper_ref` is documented for Render/imagery contexts, but not as a supported replacement for Statistics `geometry`. Do not send `cropper_ref` to `mt_stats` unless a future live/vendor test explicitly confirms it.
+
+**Index limit:** up to **3** indices per request via `bm_type`. Date range up to **365 days** is the recommended max.
+
+#### Create-task response
+
 ```json
 {
   "status": "created",
-  "task_id": "abc123",
-  "req_id": "...",
-  "task_timeout": 120
+  "task_id": "00dd1775-4fe4-420f-9ab8-19e967233154",
+  "req_id": "4554a79d-7b7c-4515-a94f-7ceeab2417c2",
+  "task_timeout": 172800
 }
 ```
 
-**Polling:**
-```text
-GET https://api-connect.eos.com/api/gdw/api/<task_id>
-Header: x-api-key: <key>
-```
+`task_timeout` is in **seconds** and is the upper bound the server may take. For interactive sync polling in the route handler, cap at `min(task_timeout, 60)` and return 504 to the client past that, with a retry hint.
 
-**Poll response (when complete):**
+#### Poll response (when complete)
+
 ```json
 {
+  "errors": [],
   "result": [
     {
-      "scene_id": "...",
-      "view_id": "S2/43/P/GK/2026/3/23/0",
-      "date": "2026-03-23",
-      "cloud": 12.5,
-      "average": 0.62,
-      "median": 0.64,
-      "std": 0.08,
-      "min": 0.1,
-      "max": 0.89,
-      "p10": 0.45,
-      "p90": 0.75,
-      "q1": 0.55,
-      "q3": 0.70
+      "scene_id": "S2B_tile_20200609_16TEL_0",
+      "view_id": "S2/16/T/EL/2020/6/9/0",
+      "date": "2020-06-09",
+      "cloud": 0.0,
+      "indexes": {
+        "NDVI": {
+          "average": 0.106,
+          "median":  0.108,
+          "min": -0.112, "max":  0.282,
+          "std":  0.063, "variance": 0.004,
+          "q1":   0.062, "q3":   0.156,
+          "p10":  0.026, "p90":  0.185
+        },
+        "EVI":  { /* ... */ },
+        "NDWI": { /* ... */ }
+      }
     }
+    // ... one entry per scene in the date range
   ]
 }
 ```
 
-**Note on field name inconsistency:** The Statistics endpoint returns `scene_id` (snake_case) while the Search endpoint returns `sceneID` (camelCase). Normalize both keys to the common `SceneDto.sceneId` property when parsing API responses.
+**Field-name notes:** statistics responses use `scene_id` (snake_case) while Search uses `sceneID` (camelCase with capital ID). Normalize both to the app's `sceneId`. Map `average` → display label "Mean".
 
-**Corrections needed in plan:**
+**Polling pattern:**
 
-1. **`bm_type` accepts index names directly** (e.g., `"NDVI"`, `"EVI"`, `"NDWI"`) — unlike the Render API which needs formulas. No translation needed here.
-2. **Response field is `average`, not `mean`.** The plan's Sample pane says "mean NDVI" but the API returns `average`. Map `average` → display as "Mean" in the UI.
-3. **`task_timeout` is returned in creation response.** Use this value (in seconds) as the max wait for polling — don't hardcode a timeout.
-4. **Statistics uses `geometry` directly** — not the `cropper_ref`/field management ID. The stats are already polygon-clipped because the geometry is sent in the request body.
-5. **`cloud_masking_level: 1`** should be included for better cloud filtering on Sentinel-2 L2A data.
-6. **Sync polling strategy (confirmed for v2):** Poll `GET /api/gdw/api/<task_id>` on a loop with ~2s interval, up to `task_timeout` seconds. On timeout, return a 504 from the proxy route. On completion, upsert to `cached_ndvi_stats` and return.
+- Interval: 2 seconds
+- Max wait: `min(task_timeout, 60)` seconds
+- On timeout: HTTP 504 with `{ error: 'STATS_TIMEOUT', taskId }`; client retries after 10 s
+- On EOSDA server error: HTTP 502 with structured body
+- On success: upsert to `cached_ndvi_stats`, return DTO
 
-**Supported vegetation indices for `bm_type`:**
-`NDVI, NDSI, NDWI, RECI, NDMI, SAVI, ARVI, EVI, GCI, SIPI, NBR, MSI, ISTACK, FIDET, NDRE, CCCI, MSAVI`
+**Rate limits:** Statistics task-creation and polling endpoints are each capped at 10 requests/minute per API key. Client-side debounce + cache absorbs most calls.
 
----
-
-### 3.7 Account limits — Know before activating
-
-From the EOSDA quickstart:
-- Trial: **1000 requests per API key** total
-- Statistics API: **one field per request**, max **365 days** per request, max **3 indices** per request
-- Imagery (render): ~3 requests per scene retrieval workflow
-- Max field size: **200 km²** (aligns with app's existing guardrail — good)
-- Rate limit: **10 requests/minute** per endpoint
-
-**Implication for caching strategy:** 1000 trial requests will run out quickly if stats are not cached. The plan's cache-first approach in `POST /api/eosda/stats` is critical — never re-fetch if `cached_ndvi_stats` already has the result.
+**Sources:** [Statistics API overview](https://doc.eos.com/docs/statistics/), [Vegetation indices analytics](https://doc.eos.com/docs/statistics/vegetation-indices-analytics/), [FAQ — rate limits](https://doc.eos.com/docs/faq/), [Download multi-temporal statistics (older docs, more detail)](https://developers.eos.com/download_mt_stats.html).
 
 ---
 
-## 4. Cross-Document Issues
+## 4. Action items (prioritized)
 
-### 4.1 Broken `§N` section references in implementation.md
+Apply in order. Each item lists files to edit and a precise change.
 
-`implementation.md` cites `plan.md` sections by number, but `plan.md` uses named sections. Every cross-reference is broken:
+### A1. Audit the shipped Phase 2 basemap style — ✅ done (10 May 2026)
 
-| implementation.md cites | Should link to |
-|---|---|
-| `plan.md §7` (DB schema) | `architecture.md` — schema is there, not plan.md |
-| `plan.md §3` (10 crops) | `plan.md §1 — Create /fields/new` |
-| `plan.md §4` (analysis anatomy) | `plan.md §2 — Field Analysis Screen Anatomy` |
-| `plan.md §10` (TanStack cache defaults) | Not defined anywhere — add a stale-time table to plan.md |
-| `plan.md §13` (EOSDA key injection) | Not defined anywhere — add to Phase 4 section |
-| `plan.md §16` (demo checklist) | `plan.md §7 — Verification & Testing` |
+Result: `apps/web/src/lib/arcgis.ts` passes `'arcgis/imagery'` (the composite hybrid with labels). No change required. The file also includes a `findFirstSymbolLayerId` runtime sanity check that warns if Esri ever ships a label-free payload.
 
-### 4.2 TanStack stale-time defaults are cited but never defined
+### A2. Pin `@esri/maplibre-arcgis` — ✅ retired (10 May 2026)
 
-`implementation.md` Modules 1.7, 6.2, 7.2 all reference stale times but the values are inconsistent and their source is never specified in plan.md:
-- Module 1.7: "5 min stale on the list"
-- Modules 6.2, 7.2: `staleTime: 60 * 60 * 1000` (1 hour)
+This action item was based on a self-error in this document (an earlier draft claimed `1.2.0` did not exist on npm). Verified against the npm registry: `1.2.0` is the current `latest` dist-tag. `apps/web/package.json` already declares `^1.2.0`, the lockfile resolves to `1.2.0`, and the app is functional. Do not downgrade.
 
-**Add to plan.md:**
-| Query | `staleTime` | Rationale |
-|---|---|---|
-| `['fields']` (list) | 5 min | Low-frequency changes, dashboard always fresh |
-| `['fields', id]` (single) | 5 min | Same |
-| `['eosda', 'scenes', fieldId]` | 1 hour | Scenes don't change intraday |
-| `['eosda', 'stats', fieldId]` | 1 hour | Stats are historical, expensive to recompute |
+### A3. Update `implementation.md` Phase 4 — collapse Path A/B hedging — ✅ applied (10 May 2026)
 
-### 4.3 DB schema lives in architecture.md, not plan.md
+Applied to `docs/implementation.md`:
 
-Module 1.2 in implementation.md says "defined in plan.md §7" but the schema is in `architecture.md`. The implementation.md cross-reference should point to `architecture.md` directly. Risk: if `architecture.md` diverges from the Drizzle schema, both docs will be wrong.
+- Module 4.2 renamed (drops the "(conditional)" suffix); body references this doc §3.5.3 verbatim. `getOrCreateCropperRef(field)` always attempts the POST; on 2xx persists; on non-2xx logs `{ fieldId, status, body }` and returns `null` so warm-up continues.
+- Module 4.5 (`warmField`) runs Cropper + Search in parallel via `Promise.allSettled`. Cropper persistence stays inside `getOrCreateCropperRef`; the single `.catch(...)` in Module 4.6 is the one true error handler.
+- Phase 4 exit criteria now reads: "`eosda_cropper_ref` is populated from a successful Cropper API POST; if the POST fails, the column stays NULL and a structured log line records the failure."
+- Pending Items table: row 4.2 removed; row 4.3 reframed as a 30-second live test of the empty-results response shape.
+- Phase 4 goal paragraph updated to drop the "only after the Cropper API creation flow is confirmed" hedge.
 
-### 4.4 Module 2.5 status not updated
+### A4. Update `implementation.md` Phase 6 Module 6.3 — remove formula translation — ✅ applied (10 May 2026)
 
-Modules 2.1–2.4 are all marked ✅. Module 2.5 (`CreateLayout`) has no status marker. Git status shows new untracked files in `apps/web/src/components/map/` and `apps/web/src/lib/arcgis.ts` — Phase 2 work is in progress. Update Module 2.5 status once complete.
+Applied to `docs/implementation.md` Module 6.3:
 
-### 4.5 ArcGIS style name drift
+- Module 6.3 now references this doc §2.1 to make clear that aliases `NDVI`/`EVI`/`NDWI` are passed through directly to EOSDA — no `INDEX_TO_BAND` formula map.
+- `COLORMAP`/`MIN_MAX` defaults are baked in **unconditionally** per §3.6: `NDVI`/`EVI` → `RdYlGn`/`-1,1`; `NDWI` → `Blues`/`-1,1`. Harmless if EOSDA's default already matches; required if it falls back to grayscale.
 
-plan.md Module 2.4 says start with `'arcgis/imagery'` and switch if no symbol layers. The actual `lib/arcgis.ts` already uses `'arcgis/imagery/standard'` (the hybrid with labels). Plan should be updated to specify `/standard` directly to avoid confusion.
+### A5. Add Phase 1 Module 1.3 polygon ser/des contract — ✅ applied to docs (10 May 2026)
+
+The contract is now documented inline in `docs/implementation.md` Module 1.3 as a blockquote referencing this document's §3.1. The shipped helpers in [`apps/api/src/db/geometry.ts`](../apps/api/src/db/geometry.ts) (`geometryFromGeoJson` / `geometryToGeoJson`) already match the contract; no code change required. The CHECK constraints `fields_geometry_valid` and `fields_geometry_srid` in `0000_green_swarm.sql` enforce SRID 4326 and `ST_IsValid` at the DB.
+
+### A6. Rewrite `review-findings.md` — superseded (10 May 2026)
+
+This file IS the rewritten reference. Self-correction headers in §3.3, A1, A2, A5, and the trust-hierarchy table mark every change applied. There is no separate "prior" review-findings.md to discard — this document is the single source of EOSDA / vendor-spec truth and should be re-verified before its next consumer.
+
+### A7. EOSDA support email — reduce scope — ✅ applied (10 May 2026)
+
+Applied to `docs/plan.md` (Pre-flight §2) and `docs/implementation.md` (Pre-flight P.2). The email now asks only:
+
+1. Trial rate-limit (RPM) per endpoint group.
+2. Total monthly request quota for trial.
+
+The Cropper-endpoint and formula-encoding questions have been removed; both are answered by docs.
+
+### A8. Update `architecture.md` §6 (API surface) — ✅ applied (10 May 2026)
+
+Applied to `docs/architecture.md`:
+
+- API surface row for `GET /api/eosda/render/...` now reads "adds that field's `cropper_ref` (populated unconditionally during warm-up via `POST /api/render/cropper/`)".
+- Caching strategy row for cropper refs no longer says "required only for clipped render tiles once EOSDA confirms the Cropper creation flow"; it now describes the documented populate/reuse/fallback flow.
+- Async-warm bullet in §4 also dropped the "when EOSDA's Cropper creation flow is confirmed" hedge.
+
+### A9. Update `plan.md` review-corrections preamble — ✅ applied (10 May 2026)
+
+Applied to `docs/plan.md`:
+
+- Review-corrections bullet now reads: "`cropper_ref` is created during warm-up via `POST /api/render/cropper/`; the returned 32-character hex hash is persisted in `fields.eosda_cropper_ref` (TEXT) and added as a query param to every Render tile request. If the POST fails, the column stays NULL and Render falls back to scene-wide tiles under the field outline."
+- Risk §6 #7 rewritten to drop the "not yet confirmed" framing and document the populate/reuse/fallback flow.
+- Decision-log row "EOSDA Cropper fallback" renamed to "EOSDA Cropper integration" with the full flow described.
 
 ---
 
-## 5. Architecture Gaps
+## 5. Genuinely unresolved items
 
-### 5.1 NDVI band formula translation — NEW GAP (not in original plan)
+These remain as live-test or vendor-confirm tasks. None are blocking for Phase 4 startup.
 
-The render proxy route (`GET /api/eosda/render/:z/:x/:y?band=NDVI`) must translate the index name to a formula before calling EOSDA. This translation layer and the required `COLORMAP` parameter are missing from the plan entirely.
+| # | Item | Resolution path | Blocks |
+|---|---|---|---|
+| U1 | Confirm Cropper POST host: does `api-connect.eos.com/api/render/cropper/` return `cropper_ref` against a trial key, or is `gate.eos.com` required for that one endpoint? | One live POST, ~5 min | Module 4.2 |
+| U2 | Search empty-results response shape (`results: []` vs error?) | One live Search with a polygon outside Sentinel-2 coverage | Module 4.5 fallback logic |
+| U3 | Live smoke for Render header auth and final alias visualization | One live tile fetch, view in browser | Module 6.3 closeout; v2 sets explicit `COLORMAP`/`MIN_MAX` regardless of EOSDA defaults |
+| U4 | Trial rate limits (RPM, monthly quota) for Render, Search, Statistics | EOSDA support email | Capacity planning |
 
-**Add to Module 6.3:**
+---
+
+## 6. Source citations
+
+Current `doc.eos.com` URLs were re-verified on 10 May 2026. Legacy `developers.eos.com` URLs are retained as older reference citations, but this standalone pass could not extract them from the local shell/fetch tools; prefer the current `doc.eos.com` surface when both exist.
+
+### Drizzle ORM + PostGIS
+- [Drizzle PostgreSQL extensions](https://orm.drizzle.team/docs/extensions/pg)
+- [Drizzle PostGIS geometry point guide](https://orm.drizzle.team/docs/guides/postgis-geometry-point)
+- [GitHub issue #3040 — polygon SRID generation bug](https://github.com/drizzle-team/drizzle-orm/issues/3040)
+- [GitHub discussion #2383 — geometry types](https://github.com/drizzle-team/drizzle-orm/discussions/2383)
+
+### Clerk Fastify
+- [Clerk Fastify quickstart](https://clerk.com/docs/quickstarts/fastify)
+- [`clerkPlugin()` reference](https://clerk.com/docs/reference/fastify/clerk-plugin)
+- [`getAuth()` reference](https://clerk.com/docs/reference/fastify/get-auth)
+
+### MapLibre + ArcGIS plugin
+- [MapLibre GL JS introduction](https://maplibre.org/maplibre-gl-js/docs/) (current: 5.24.0)
+- [`@esri/maplibre-arcgis` GitHub repo](https://github.com/Esri/maplibre-arcgis)
+- [`@esri/maplibre-arcgis` API reference](https://developers.arcgis.com/maplibre-gl-js/api-reference/) (current: 1.1.0)
+- [BasemapStyle class reference](https://developers.arcgis.com/maplibre-gl-js/api-reference/BasemapStyle/)
+- [ArcGIS Imagery Standard style endpoint](https://developers.arcgis.com/rest/basemap-styles/arcgis-imagery-standard-style-get/)
+- [ArcGIS Basemap Styles overview](https://developers.arcgis.com/documentation/mapping-and-location-services/mapping/basemaps/arcgis-styles)
+- [Flutter BasemapStyle enum (clearest description of imagery vs imagery/standard)](https://developers.arcgis.com/flutter/beta/api-reference/api/arcgis_maps/BasemapStyle.html)
+
+### terra-draw
+- [terra-draw GitHub](https://github.com/JamesLMilner/terra-draw)
+- [Getting started guide](https://github.com/JamesLMilner/terra-draw/blob/main/guides/1.GETTING_STARTED.md)
+- [Adapters guide](https://github.com/JamesLMilner/terra-draw/blob/main/guides/3.ADAPTERS.md)
+
+### EOSDA — overview & migration
+- [API Connect main docs (`doc.eos.com`)](https://doc.eos.com/)
+- [Quickstart](https://doc.eos.com/docs/quickstart/) — confirms `NDVI` alias example URL
+- [What did we change (host migration notice)](https://doc.eos.com/docs/quickstart/what-did-we-change/)
+- [FAQ](https://doc.eos.com/docs/faq/)
+
+### EOSDA — Cropper
+- [Cropper API (older docs, full spec)](https://developers.eos.com/cropper.html)
+
+### EOSDA — Search
+- [Single dataset search](https://doc.eos.com/docs/search/simple-search/)
+- [Multi-dataset search](https://doc.eos.com/docs/search/multi-dataset-search/)
+- [Search requests (older docs, complete field list)](https://developers.eos.com/search_request.html)
+
+### EOSDA — Render
+- [Render / Image Bands API](https://doc.eos.com/docs/render/)
+- [Cloud-mask tile API (cropper_ref usage on api-connect host)](https://doc.eos.com/docs/render/cloud-mask/)
+- [Image tile API (older docs, full param table)](https://developers.eos.com/image_tile.html)
+- [Colorization API (cropper_ref + colormap)](https://doc.eos.com/docs/colorization/colorization-api/)
+
+### EOSDA — Statistics
+- [Statistics API](https://doc.eos.com/docs/statistics/)
+- [Vegetation indices analytics](https://doc.eos.com/docs/statistics/vegetation-indices-analytics/)
+- [Download multi-temporal statistics (older docs, complete poll-response example)](https://developers.eos.com/download_mt_stats.html)
+
+### EOSDA — Field Management (referenced but not used for cropper)
+- [Field Management API](https://doc.eos.com/docs/field-management-api/field-management/)
+
+---
+
+## Appendix A — Drop-in code snippets
+
+### A.1 `apps/api/src/services/eosda-client.ts`
+
 ```ts
-const INDEX_TO_BAND: Record<string, { formula: string; colormap: string }> = {
-  NDVI: { formula: '(B08-B04)/(B08+B04)', colormap: 'RdYlGn' },
-  EVI:  { formula: '2.5*((B08-B04)/(B08+6*B04-7.5*B02+1))', colormap: 'RdYlGn' },
-  NDWI: { formula: '(B03-B08)/(B03+B08)', colormap: 'Blues' },
-};
-```
+const EOSDA_BASE = 'https://api-connect.eos.com';
 
-### 5.2 `cropper_ref` in render — Unconfirmed feature
-
-The plan relies on passing `cropper_ref` as a query param to EOSDA's render endpoint for polygon-clipped tiles. This parameter is documented for Render, but the app still needs the Cropper creation endpoint/request/response contract before it can populate `fields.eosda_cropper_ref`. Two possible outcomes:
-- **If the Cropper flow is confirmed:** Persist the returned reference and add `cropper_ref=<field.eosda_cropper_ref>` to the upstream render URL.
-- **If the Cropper flow is not available:** The field outline from `FieldLayer` provides visual context but NDVI renders the full scene. This is acceptable for v2. The `eosda_cropper_ref` column and `warmField` cropper creation step may be unnecessary overhead for v2 if clipping is not available.
-
-### 5.3 Stats polling — timeout spec
-
-Sync polling in a Fastify route handler. The `task_timeout` value from the EOSDA task creation response should set the cap. Recommended implementation:
-```text
-- Poll interval: 2s
-- Max wait: min(task_timeout, 60) seconds
-- On timeout: return 504 to client with { error: 'STATS_TIMEOUT', taskId }
-- On success: upsert to cached_ndvi_stats, return results
-- On EOSDA error: return 502 with structured error body
-```
-
-Frontend (Module 7.2) should handle 504 by showing a "Stats computing, try again in a moment" toast and retrying after 10s (the `useEosdaStats` query can set `retry: 1, retryDelay: 10000`).
-
-### 5.4 Clerk token refresh for MapLibre `transformRequest`
-
-The plan defers this across Modules 2.2 and 6.4 with no concrete spec. Recommended implementation:
-
-```ts
-// In useMapInstance — create a token ref
-const tokenRef = useRef<string | null>(null);
-
-// Token refresh effect (set up in the same component that mounts MapView)
-useEffect(() => {
-  const refresh = async () => { tokenRef.current = await getToken(); };
-  refresh();
-  const interval = setInterval(refresh, 55 * 1000); // refresh every 55s (Clerk tokens expire at 60s)
-  return () => clearInterval(interval);
-}, [getToken]);
-
-// In transformRequest:
-transformRequest: (url) => {
-  if (url.startsWith(`${env.VITE_API_BASE_URL}/api/eosda/render/`)) {
-    return { url, headers: { Authorization: `Bearer ${tokenRef.current ?? ''}` } };
+export class EosdaError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly path: string,
+    public readonly body: unknown,
+  ) {
+    super(`EOSDA ${status} on ${path}`);
   }
-  return { url };
+}
+
+export async function eosdaRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const r = await fetch(`${EOSDA_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.EOSDA_API_KEY!,
+      ...init.headers,
+    },
+  });
+  if (!r.ok) {
+    const body = await r.text().catch(() => '');
+    // Log path only — never the full URL with query params (may carry api_key)
+    throw new EosdaError(r.status, path, body);
+  }
+  return (await r.json()) as T;
 }
 ```
 
-The `tokenRef` should live in the component that owns `useMapInstance`, not inside the hook itself.
+### A.2 `apps/api/src/services/eosda-cropper.ts`
 
-### 5.5 Layer ordering — split across Module 3.3 and 6.4
+```ts
+import type { Polygon } from 'geojson';
+import { eosdaRequest } from './eosda-client';
+import { db } from '../db';
+import { fields } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
-The canonical layer stack (`satellite → NDVI → labels → field fill → field outline`) is implied by both modules but never stated in one place. Consolidate into a single comment block in `lib/map-style.ts`:
+interface CropperResponse { cropper_ref: string }
 
-```text
-Stack (bottom to top):
-1. ArcGIS satellite (via BasemapStyle)
-2. NDVI raster (below first symbol layer, using findFirstSymbolLayerId)
-3. ArcGIS symbol/label layers
-4. field-fill  (moveLayer to top, no beforeId)
-5. field-outline (moveLayer to top, no beforeId)
+export async function getOrCreateCropperRef(field: {
+  id: string;
+  geometry: Polygon;
+  eosda_cropper_ref: string | null;
+}): Promise<string | null> {
+  if (field.eosda_cropper_ref) return field.eosda_cropper_ref;
+
+  try {
+    const { cropper_ref } = await eosdaRequest<CropperResponse>(
+      '/api/render/cropper/',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'Feature',
+          properties: {},
+          geometry: field.geometry,
+        }),
+      },
+    );
+    await db
+      .update(fields)
+      .set({ eosda_cropper_ref: cropper_ref })
+      .where(eq(fields.id, field.id));
+    return cropper_ref;
+  } catch (err) {
+    // Log but do not throw — warm-up continues, render falls back to scene-wide tiles
+    console.error({ err, fieldId: field.id }, 'cropper creation failed');
+    return null;
+  }
+}
 ```
 
-`FieldLayer` uses `moveLayer` (no `beforeId`) to stay above everything. `NdviLayer` uses `addLayer(layer, findFirstSymbolLayerId(map))` to insert below labels.
+### A.3 `apps/api/src/services/eosda-search.ts`
 
-### 5.6 `warmField` double error handler
+```ts
+import type { Polygon } from 'geojson';
+import { eosdaRequest } from './eosda-client';
 
-Module 4.5 says `warmField` swallows all errors internally. Module 4.6 adds an outer `.catch()`. The outer catch never fires because `warmField` never rejects. Remove one:
+export interface SceneDto {
+  sceneId: string;
+  viewId: string;
+  sceneDate: string;          // YYYY-MM-DD
+  cloudPercent: number;
+  dataCoveragePercent: number;
+  tmsTemplate: string;
+}
 
-**Recommended:** Keep the outer `.catch()` in Module 4.6 as the single handler (remove internal swallowing in `warmField`, let it propagate). The outer call site is the right place to log `{ fieldId }` context since `warmField` itself doesn't know where it was called from.
+interface RawSearchResult {
+  sceneID: string;
+  view_id: string;
+  date: string;
+  cloudCoverage: number;
+  dataCoveragePercentage: number;
+  tms: string;
+}
 
----
+export async function searchScenes(opts: {
+  geometry: Polygon;
+  from: string;               // YYYY-MM-DD
+  to: string;                 // YYYY-MM-DD
+  limit?: number;
+}): Promise<SceneDto[]> {
+  const r = await eosdaRequest<{ results: RawSearchResult[]; meta: { found: number } }>(
+    '/api/lms/search/v2/sentinel2',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: ['sceneID', 'view_id', 'date', 'cloudCoverage', 'dataCoveragePercentage', 'tms'],
+        limit: opts.limit ?? 10,
+        page: 1,
+        search: {
+          date: { from: opts.from, to: opts.to },
+          cloudCoverage: { from: 0, to: 80 },
+          shape: opts.geometry,
+          shapeRelation: 'CONTAINS',
+        },
+        sort: { date: 'desc' },
+      }),
+    },
+  );
 
-## 6. Action Items
-
-### Immediate (before continuing Phase 2/3)
-
-| # | Action | File to update | Priority |
-|---|---|---|---|
-| A1 | Update ArcGIS style name to `'arcgis/imagery/standard'` | `plan.md` Module 2.4 | Medium |
-| A2 | Add NDVI/EVI/NDWI band formula translation table to Module 6.3 | `plan.md`, `implementation.md` | **High** |
-| A3 | Add `COLORMAP` + `MIN_MAX` + `CALIBRATE` render params to Module 6.3 | `plan.md`, `implementation.md` | **High** |
-| A4 | Keep `eosda_cropper_ref` as `TEXT` until EOSDA confirms the Cropper response type; revisit INTEGER/BIGINT only if Field Management `id` is accepted as Render `cropper_ref` | `implementation.md` Module 4.2 | **High** |
-| A5 | Add `cropper_ref` in render — "confirm with EOSDA or skip for v2" decision note | `plan.md`, `implementation.md` | **High** |
-| A6 | Fix all `§N` cross-references in implementation.md to named anchors | `implementation.md` | Medium |
-| A7 | Add stale-time defaults table to plan.md | `plan.md` | Medium |
-| A8 | Specify `x-api-key` header (not query param) as the API key injection method | `plan.md` Module 4.1, `implementation.md` Module 4.1 | Medium |
-
-### Before Phase 4 (EOSDA)
-
-| # | Action | Owner |
-|---|---|---|
-| B1 | Email EOSDA to confirm `cropper_ref` / field ID render clipping feature exists | User (in activation email) |
-| B2 | Confirm EOSDA response field is `average` (not `mean`) — update Sample pane label | Dev (update Module 7.3) |
-| B3 | Add `cloud_masking_level: 1` to stats request body in Module 7.1 | Dev |
-| B4 | Add `task_timeout`-based polling cap to Module 7.1 | Dev |
-| B5 | Leave `eosda_cropper_ref` as `text` unless EOSDA confirms Field Management `id` can serve as Render `cropper_ref`; then migrate deliberately | Dev |
-
-### Documentation cleanup (can batch)
-
-| # | Action |
-|---|---|
-| C1 | Add canonical layer-stack comment to `lib/map-style.ts` (or plan.md) |
-| C2 | Fix `warmField` double-catch — remove internal swallow, keep outer `.catch` in Module 4.6 |
-| C3 | Add Clerk token refresh spec (55s interval, `tokenRef`) to Module 2.2/6.4 |
-| C4 | Mark Module 2.5 complete or in-progress once `CreateLayout` is done |
-| C5 | Fix DB schema cross-reference in Module 1.2: `architecture.md`, not `plan.md §7` |
-
----
-
-## 7. EOSDA Activation Email Template
-
-Include these questions when emailing `api.support@eosda.com`:
-
-```text
-Subject: Trial activation + technical questions — API Connect account [your account email]
-
-Hi EOSDA support,
-
-Please activate the trial for our account. We're building a crop monitoring
-application and have a few technical questions:
-
-1. Cropper API: Your Render API docs mention a `cropper_ref` parameter
-   described as "optional AOI reference from Cropper API." We need to create
-   a cropper reference from a field polygon to clip NDVI tiles. What is the
-   endpoint URL and request format for creating a `cropper_ref`? (We did
-   not find a documented Cropper API endpoint in the public docs.)
-
-2. Field Management ID: The /field-management POST returns a numeric `id`.
-   Is this the same as the `cropper_ref` used in the Render API, or are
-   these two separate systems?
-
-3. Render formula encoding: For virtual band formulas like
-   `(B08-B04)/(B08+B04)` in the render path, should the formula be
-   URL-encoded or used literally? Our docs research suggests literal, but
-   please confirm.
-
-4. Rate limits: What are the rate limits for the Render and Search APIs
-   specifically for trial accounts?
-
-5. Sentinel-2 dataset ID: Is `sentinel2` the correct dataset_id for the
-   Search API, or is it `sentinel-2` or another variant?
-
-Thank you.
+  return r.results.map((raw) => ({
+    sceneId: raw.sceneID,
+    viewId: raw.view_id,
+    sceneDate: raw.date,
+    cloudPercent: raw.cloudCoverage,
+    dataCoveragePercent: raw.dataCoveragePercentage,
+    tmsTemplate: raw.tms,
+  }));
+}
 ```
 
----
+### A.4 `apps/api/src/services/field-warmup.ts`
 
-## 8. Core Flow: Draw Plot → NDVI Display
+```ts
+import { db } from '../db';
+import { fields } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import { getOrCreateCropperRef } from './eosda-cropper';
+import { searchScenes } from './eosda-search';
+import { upsertScenes } from './scene-cache';
 
-> This section maps the user's primary requirement to concrete implementation steps and flags every confirmed gap in the current plan.
->
-> **Requirement:** User draws a polygon on the map → app fetches Sentinel-2 data → NDVI heatmap appears clipped to the plot → user can switch index (EVI/NDWI).
+export async function warmField(fieldId: string): Promise<void> {
+  const [field] = await db.select().from(fields).where(eq(fields.id, fieldId));
+  if (!field) return;
 
----
+  // Compute a recent date window for "latest scene"
+  const to = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-### 8.1 End-to-End Flow (6 Steps)
+  // Cropper creation and Search are independent — run in parallel.
+  const [cropperResult, scenesResult] = await Promise.allSettled([
+    getOrCreateCropperRef(field),
+    searchScenes({ geometry: field.geometry, from, to, limit: 1 }),
+  ]);
 
-```text
-[1] User draws polygon on /fields/new (Terra Draw)
-         ↓
-[2] POST /api/fields → DB insert → void warmField(fieldId)
-         ↓
-[3] warmField (background, async):
-    a. POST /api/render/cropper/  ← EOSDA — create clip reference  [UNCONFIRMED]
-       OR POST /field-management  ← EOSDA Field Management          [CONFIRMED, different purpose]
-    b. POST /api/lms/search/v2/sentinel2 — fetch latest scene metadata [CONFIRMED endpoint, request body needs verification]
-    c. upsert to cached_scenes
-         ↓
-[4] User opens /fields/:id
-    POST /api/eosda/scenes → returns SceneDto[] from cached_scenes
-    → DateTimeline renders scene dates
-    → useUiStore.selectedViewId = latest low-cloud scene
-         ↓
-[5] GET /api/eosda/render/{z}/{x}/{y}?fieldId=...&viewId=...&band=NDVI
-    Proxy server:
-    a. Decode viewId from query param (contains slashes)       [GAP — not in current plan]
-    b. Translate band=NDVI → formula (B08-B04)/(B08+B04)       [GAP 1 — CRITICAL, missing]
-    c. Add COLORMAP=RdYlGn, MIN_MAX=-1,1, CALIBRATE=1          [GAP 1 — CRITICAL, missing]
-    d. Optionally add cropper_ref for clipped tiles             [GAP 2 — UNCONFIRMED]
-    e. Upstream: GET /api/render/{viewId}/{formula}/{z}/{x}/{y}?...
-    f. Stream PNG back to MapLibre
-         ↓
-[6] NdviLayer: MapLibre raster source → NDVI heatmap on map
-    User clicks IndexSwitcher → selectedIndex changes → NdviLayer recreates source
-    User clicks DateTimeline chip → selectedViewId changes → NdviLayer recreates source
+  if (cropperResult.status === 'rejected') {
+    // already logged inside the helper; nothing to do here
+  }
+
+  if (scenesResult.status === 'fulfilled' && scenesResult.value.length > 0) {
+    await upsertScenes(fieldId, scenesResult.value);
+  }
+  // On no scenes in 90 days, caller can extend the window via /api/eosda/scenes
+}
 ```
 
----
+### A.5 `apps/api/src/routes/eosda.render.ts` (sketch)
 
-### 8.2 Gap 1: Band Formula Translation — Corrected Module 6.3 Spec
+```ts
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { db } from '../db';
+import { fields, cachedScenes } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
+import { getAuth } from '@clerk/fastify';
 
-**Why it fails without this fix:** EOSDA's render API does not accept `NDVI` as a bands parameter. It needs the actual spectral formula or band codes. Sending `band=NDVI` upstream will return a 400 error or an unrecognized response.
-
-**Why the heatmap will be grey without COLORMAP:** Even with the correct formula, EOSDA returns a grayscale PNG by default. `COLORMAP=RdYlGn` is required for the red-yellow-green NDVI visualization.
-
-**Corrected `apps/api/src/routes/eosda.render.ts` spec:**
-
-```typescript
-// Add this constant at module top — do not inline in the handler
-const INDEX_TO_BAND: Record<string, { formula: string; colormap: string; minMax: string }> = {
-  NDVI: { formula: '(B08-B04)/(B08+B04)', colormap: 'RdYlGn', minMax: '-1,1' },
-  EVI:  { formula: '2.5*((B08-B04)/(B08+6*B04-7.5*B02+1))', colormap: 'RdYlGn', minMax: '-1,1' },
-  NDWI: { formula: '(B03-B08)/(B03+B08)', colormap: 'Blues', minMax: '-1,1' },
+const ALLOWED = new Set(['NDVI', 'EVI', 'NDWI'] as const);
+const COLOR: Record<string, { COLORMAP: string; MIN_MAX: string }> = {
+  NDVI: { COLORMAP: 'RdYlGn', MIN_MAX: '-1,1' },
+  EVI:  { COLORMAP: 'RdYlGn', MIN_MAX: '-1,1' },
+  NDWI: { COLORMAP: 'Blues',  MIN_MAX: '-1,1' },
 };
 
-// In the route handler:
-const { fieldId, viewId: rawViewId, band } = query;  // band validated by zod to ∈ {NDVI, EVI, NDWI}
-const bandConfig = INDEX_TO_BAND[band];
-
-// REQUIRED: URL-decode viewId. The browser sends it as a query param because it contains
-// slashes (e.g. S2/43/P/GK/2026/3/23/0). The proxy must decode it before embedding in
-// the upstream path, otherwise the slashes are double-encoded.
-const viewId = decodeURIComponent(rawViewId);
-
-// Build query string (api_key must NEVER appear in logs — log only path+status)
-const params = new URLSearchParams({
-  MIN_MAX: bandConfig.minMax,
-  COLORMAP: bandConfig.colormap,
-  CALIBRATE: '1',
-  api_key: env.EOSDA_API_KEY,
+const params = z.object({
+  z: z.coerce.number().int(),
+  x: z.coerce.number().int(),
+  y: z.coerce.number().int(),
+});
+const query = z.object({
+  fieldId: z.string().uuid(),
+  viewId: z.string().min(1),
+  band: z.enum(['NDVI', 'EVI', 'NDWI']),
 });
 
-// If cropper_ref is confirmed and field has one, add it
-if (field.eosda_cropper_ref != null) {
-  params.set('cropper_ref', String(field.eosda_cropper_ref));
-}
+export async function renderRoute(app: FastifyInstance) {
+  app.get('/api/eosda/render/:z/:x/:y', async (req, reply) => {
+    const { userId, isAuthenticated } = getAuth(req);
+    if (!isAuthenticated) return reply.code(401).send();
 
-// NOTE: formula contains characters like ( ) + - /
-// EOSDA examples show the formula literally in the path without URL-encoding.
-// Test with a known formula first (see §8.2 open question below).
-const upstreamUrl =
-  `https://api-connect.eos.com/api/render/${viewId}/${bandConfig.formula}/${z}/${x}/${y}?${params}`;
+    const p = params.parse(req.params);
+    const q = query.parse(req.query);
 
-const upstream = await fetch(upstreamUrl);
-if (!upstream.ok) {
-  // Log path only, never full URL (contains api_key)
-  const path = `/api/render/${viewId}/${band}/${z}/${x}/${y}`;
-  req.log.error({ status: upstream.status, path }, 'EOSDA render failed');
-  return reply.status(upstream.status).send();
-}
+    const viewId = decodeURIComponent(q.viewId);
+    if (viewId.includes('..')) return reply.code(400).send();
 
-reply
-  .header('Content-Type', 'image/png')
-  .header('Cache-Control', 'private, max-age=86400');
-return reply.send(Buffer.from(await upstream.arrayBuffer()));
-```
+    const [field] = await db
+      .select()
+      .from(fields)
+      .where(and(eq(fields.id, q.fieldId), eq(fields.userId, userId!)));
+    if (!field) return reply.code(403).send();
 
-**Formula encoding — inferred from EOSDA examples:** EOSDA example URLs show formulas used literally in the path without URL-encoding. The apparent path structure treats `view_id` as a fixed-depth prefix (e.g. `S2/{grid_zone}/{grid_square}/{grid_id}/{year}/{month}/{day}/{seq}` = 8 segments), then captures the bands/formula before `{z}/{x}/{y}`. Because this is inferred from examples rather than an explicit router contract, keep the activation-email question in §7 and verify before relying on formula paths in production.
+    const [scene] = await db
+      .select()
+      .from(cachedScenes)
+      .where(and(eq(cachedScenes.fieldId, q.fieldId), eq(cachedScenes.viewId, viewId)));
+    if (!scene) return reply.code(404).send();
 
----
+    const u = new URLSearchParams({
+      CALIBRATE: '1',
+      mimetype: 'image/png',
+      ...COLOR[q.band],
+    });
+    if (field.eosda_cropper_ref) u.set('cropper_ref', field.eosda_cropper_ref);
 
-### 8.3 Gap 2: Field Clipping (cropper_ref) — Status Updated
+    const upstreamPath = `/api/render/${viewId}/${q.band}/${p.z}/${p.x}/${p.y}`;
+    const r = await fetch(`https://api-connect.eos.com${upstreamPath}?${u}`, {
+      headers: { 'x-api-key': process.env.EOSDA_API_KEY! },
+    });
 
-**What the plan says:** Module 4.2 calls `POST /api/render/cropper/` to get a `cropper_ref` and stores it in `fields.eosda_cropper_ref`. This ref is passed to the Render API to clip tiles to the field polygon.
+    if (!r.ok) {
+      req.log.error({ status: r.status, path: upstreamPath }, 'EOSDA render failed');
+      return reply.code(r.status).send();
+    }
 
-**What is now confirmed:**
-- The `cropper_ref` query parameter IS confirmed in the Render API docs: "optional AOI reference from Cropper API; any image data that does not fall into AOI is made transparent." ✅
-- The Cropper creation flow appears in EOSDA examples, but the app should still verify the exact request shape, auth style, and returned value type before persisting it. 🔴
-
-**Impact without `cropper_ref`:**
-- NDVI tiles cover the entire Sentinel-2 scene (~10,000 km²), not just the user's field
-- The user sees a wide-area NDVI heatmap with the field polygon overlaid as a white outline
-- This is visually adequate for v2 but not the polished "field-specific" view
-
-**Two implementation paths:**
-
-| Path | Condition | What to implement |
-|---|---|---|
-| **Path A: Cropper API confirmed** | Verify endpoint, request body, auth style, and response value type from EOSDA docs or support email | Module 4.2 as written; add `cropper_ref` to render upstream URL |
-| **Path B: v2 fallback** | Cropper flow not confirmed before Phase 4 | Skip Module 4.2; render full-scene tiles; FieldLayer provides field outline context |
-
-**Recommendation for v2:** Implement Path B first. The render proxy already conditionally adds `cropper_ref` (see §8.2 code spec) — once the Cropper API is found and the ref is populated, it will activate automatically. This lets you ship NDVI now and clip later.
-
-**Action:** Add to EOSDA activation email (§7): "What is the endpoint and request format for creating a Cropper AOI reference (`cropper_ref`) to use with the Render API?"
-
-**Schema impact for Path B:**
-- Column `fields.eosda_cropper_ref` stays (NULL until Path A)
-- Module 4.2 (`eosda-cropper.ts`) is a stub returning `null` for now
-- `warmField` skips step (a) from §8.1 above
-
----
-
-### 8.4 EOSDA Search Request Body — Now Confirmed
-
-**Module 4.3 `eosda-search.ts` should use this exact request body:**
-
-```typescript
-const body = {
-  search: {
-    date: { from: fromDate, to: toDate },       // ISO date strings "YYYY-MM-DD"
-    cloudCoverage: { from: 0, to: 80 },
-    shape: fieldGeometry,                        // GeoJSON Polygon object
-    shapeRelation: 'CONTAINS',
-  },
-  limit: options.limit ?? 10,
-  page: 1,
-  sort: { date: 'desc' },
-};
-```
-
-**Module 4.3 response normalization (corrected field names):**
-
-```typescript
-// Map EOSDA response → SceneDto
-function normalizeScene(raw: EosdaSearchResult): SceneDto {
-  return {
-    sceneId:             raw.sceneID,               // camelCase, not snake_case
-    viewId:              raw.view_id,               // snake_case (mixed in EOSDA response)
-    sceneDate:           raw.date,                  // "YYYY-MM-DD", NOT "timestamp"
-    cloudPercent:        raw.cloudCoverage,         // NOT "cloud"
-    dataCoveragePercent: raw.dataCoveragePercentage, // NOT "data_coverage_percentage"
-    tmsTemplate:         raw.tms,
-  };
+    reply
+      .header('Content-Type', 'image/png')
+      .header('Cache-Control', 'private, max-age=86400');
+    return reply.send(Buffer.from(await r.arrayBuffer()));
+  });
 }
 ```
 
-**Note:** `view_id` is the only snake_case field in the response; all others are camelCase. The response is wrapped in `{ results: [...], meta: { found, page, limit } }`.
-
-**This is now confirmed — no further verification needed for Module 4.3 field names.**
-
 ---
 
-### 8.5 NdviLayer Tile URL Construction
-
-**How MapLibre's raster source works:**
-
-MapLibre substitutes `{z}`, `{x}`, `{y}` in the tile URL template automatically. The template is set once when the source is created. When `viewId` or `index` changes, the entire source (and layer) must be removed and re-added.
-
-**Tile URL template (set in `NdviLayer.tsx`):**
-```typescript
-// viewId must be URL-encoded for the query param
-const encodedViewId = encodeURIComponent(viewId); // encodes the / chars
-
-const tileUrl =
-  `${env.VITE_API_BASE_URL}/api/eosda/render/{z}/{x}/{y}` +
-  `?fieldId=${fieldId}&viewId=${encodedViewId}&band=${selectedIndex}`;
-
-map.addSource('ndvi', {
-  type: 'raster',
-  tiles: [tileUrl],
-  tileSize: 256,
-  attribution: '© EOSDA',
-});
-```
-
-**Why `encodeURIComponent` on the viewId here:** The browser (or MapLibre) must not further encode the `{z}/{x}/{y}` tokens. Only `viewId` (which contains literal `/` chars) needs encoding in the query param. When the proxy receives `viewId`, it calls `decodeURIComponent` before building the upstream URL.
-
----
-
-### 8.6 Critical Path to First Working NDVI
-
-Implement in this exact order to get NDVI working for the first time:
-
-| Priority | Module | Change | Status |
-|---|---|---|---|
-| 1 | `eosda-client.ts` (4.1) | Use `x-api-key` header, not query param; never log full URL | To do |
-| 2 | `eosda-search.ts` (4.3) | Verify request body field names against official docs; normalize `timestamp` → `sceneDate` | Needs live test |
-| 3 | `field-warmup.ts` (4.5) | Skip cropper creation (Path B); just search + upsert scenes | To do |
-| 4 | `eosda.render.ts` (6.3) | Add `INDEX_TO_BAND` map; decode `viewId`; add COLORMAP/MIN_MAX/CALIBRATE | **Blocker — do first** |
-| 5 | `NdviLayer.tsx` (6.4) | `encodeURIComponent(viewId)` in tile URL template | To do |
-| 6 | Live test | Create a Karnataka field, check `cached_scenes` populated, open `/fields/:id`, confirm NDVI renders in color | Verify |
-
-**If Step 4 is missing, the app will silently return wrong EOSDA data or a grey image — the most common failure mode.**
-
----
-
-### 8.7 Open Questions
-
-Resolved questions are removed. Remaining questions require EOSDA support or live testing.
-
-| # | Question | Blocks | Status |
-|---|---|---|---|
-| Q1 | ~~Formula URL encoding~~ | ~~Module 6.3~~ | ✅ **Resolved** — use literal formula, no encoding |
-| Q2 | ~~Search request body field names~~ | ~~Module 4.3~~ | ✅ **Resolved** — `search.shape`, `search.date`, `search.cloudCoverage`, `search.shapeRelation` confirmed |
-| Q3 | What is the Cropper API endpoint URL and request body for creating a `cropper_ref`? | Module 4.2 (Path A field clipping) | ❓ Needs EOSDA support email |
-| Q4 | What is the Sentinel-2 `dataset_id` for the search endpoint? (`sentinel2` or `sentinel-2`?) | Module 4.3 | ❓ Needs live test |
-| Q5 | What does EOSDA return when no scenes are found for the polygon + date range? Empty `results[]` or an error status? | Module 4.5 fallback logic | ❓ Needs live test |
-
-Add Q3 to the EOSDA activation email (§7).
-
----
-
-*This document should be updated as questions are answered and action items are completed. Delete resolved items from the action items table.*
+*End of document. Update this file (and bump the verification date at the top) any time a vendor doc is checked again.*
