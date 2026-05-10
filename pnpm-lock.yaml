@@ -123,6 +123,12 @@ importers:
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
+      terra-draw:
+        specifier: ^1.30.0
+        version: 1.30.0
+      terra-draw-maplibre-gl-adapter:
+        specifier: ^1.4.0
+        version: 1.4.0(maplibre-gl@5.24.0)(terra-draw@1.30.0)
       zod:
         specifier: ^4.1.13
         version: 4.4.3
@@ -3476,6 +3482,15 @@ packages:
   tapable@2.3.3:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
+
+  terra-draw-maplibre-gl-adapter@1.4.0:
+    resolution: {integrity: sha512-q0k+HRnMpI4k6GLx4Q9seCo9Q1ujmQAjELfo1l4JrS/VNcSaV5mKcSw5b3uaTws8Ni5BZamm2jZwXjRkwqxoag==}
+    peerDependencies:
+      maplibre-gl: '>=4'
+      terra-draw: ^1.0.0
+
+  terra-draw@1.30.0:
+    resolution: {integrity: sha512-MAEh4ona+b70nolT2DZYCR2MZ3mZbKEy5FsYDt71aAVmFuYTBh0R4+hkVOn+iq0sTZAw6LR4klhF8g4vowbPbA==}
 
   thread-stream@4.0.0:
     resolution: {integrity: sha512-4iMVL6HAINXWf1ZKZjIPcz5wYaOdPhtO8ATvZ+Xqp3BTdaqtAwQkNmKORqcIo5YkQqGXq5cwfswDwMqqQNrpJA==}
@@ -7615,6 +7630,13 @@ snapshots:
   tailwindcss@4.2.4: {}
 
   tapable@2.3.3: {}
+
+  terra-draw-maplibre-gl-adapter@1.4.0(maplibre-gl@5.24.0)(terra-draw@1.30.0):
+    dependencies:
+      maplibre-gl: 5.24.0
+      terra-draw: 1.30.0
+
+  terra-draw@1.30.0: {}
 
   thread-stream@4.0.0:
     dependencies:

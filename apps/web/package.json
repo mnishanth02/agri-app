@@ -34,6 +34,8 @@
     "react-hook-form": "^7.75.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
+    "terra-draw": "^1.30.0",
+    "terra-draw-maplibre-gl-adapter": "^1.4.0",
     "zod": "^4.1.13",
     "zustand": "^5.0.13"
   },
