@@ -1,11 +1,5 @@
 import { z } from 'zod';
 
-const optionalString = z.preprocess((value) => {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed === '' ? undefined : trimmed;
-}, z.string().min(1).optional());
-
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
@@ -27,7 +21,7 @@ const envSchema = z.object({
       }
       return origins;
     }),
-  EOSDA_API_KEY: optionalString,
+  EOSDA_API_KEY: z.string().min(1, 'EOSDA_API_KEY is required (Module 4.1)'),
   CLERK_SECRET_KEY: z
     .string()
     .min(1, 'CLERK_SECRET_KEY is required (Module 0.8)')

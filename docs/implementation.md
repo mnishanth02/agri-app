@@ -577,7 +577,7 @@ Depends on: 2.5, 3.5.
 
 **Phase entry:** Phase 1 complete. Pre-flight P.2 (EOSDA key activated).
 
-### Module 4.1 — EOSDA HTTP client
+### Module 4.1 — EOSDA HTTP client ✅ (completed 2026-05-10)
 
 Depends on: 0.4, 0.8.
 
@@ -588,6 +588,8 @@ Depends on: 0.4, 0.8.
 2. Make `EOSDA_API_KEY` a required env var (now that this phase is active).
 
 **Done when:** Unit tests prove request construction/error mapping, and an optional `RUN_EOSDA_LIVE=1` smoke can hit Search with a tiny `limit` against a known polygon without leaking the API key in logs.
+
+> ⚠️ PENDING: `RUN_EOSDA_LIVE=1` smoke deferred to Module 4.3 where the Search wrapper exists to be smoke-tested. The unit-test side of Done-when is satisfied (20 tests covering request construction, error mapping, query-auth fallback, key-smuggling defenses, and logging-leak canaries).
 
 ### Module 4.2 — Cropper-ref creation/reuse
 
@@ -954,6 +956,7 @@ Depends on: 8.1, 8.2.
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
+| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.3 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Land it once the Search wrapper exists in 4.3 — it has no value before there's a typed wrapper to invoke. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
 ---
