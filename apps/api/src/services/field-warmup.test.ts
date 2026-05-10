@@ -562,12 +562,16 @@ describe('warmField — defensive cropper rejection branch', () => {
       mockFetch({
         searchResponses: [{ status: 200, body: { results: [scene] } }],
       });
+      const log = makeLogger();
 
-      await expect(warmField(fieldId, { db, log: makeLogger() })).resolves.toBeUndefined();
+      await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
 
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.scene_id).toBe('S2B_hung_cropper');
+      expect(
+        log.error.mock.calls.find(([, msg]) => msg === 'warm-up: cropper rejected unexpectedly'),
+      ).toBeUndefined();
     } finally {
       await cleanup();
     }
