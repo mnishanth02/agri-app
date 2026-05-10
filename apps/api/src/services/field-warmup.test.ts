@@ -630,6 +630,108 @@ describe('warmField — loadField failure propagates', () => {
   });
 });
 
+describe('warmField — delete-after-create race', () => {
+  it('treats the upsertScenes FK violation (23503) as benign info, not an error', async () => {
+    // Real lifecycle race surfaced by GPT-5.5's Phase 4 review: a user
+    // deletes the field they just created while warm-up is still in
+    // flight. By the time `upsertScenes` issues its INSERT, the parent
+    // row in `fields` has been removed by the DELETE route's hard-
+    // delete (and CASCADE has already wiped any earlier scene rows).
+    // Postgres raises SQLSTATE `23503` (foreign_key_violation). Without
+    // the targeted catch, the rejection bubbles to Module 4.6's
+    // `.catch(...)` and gets logged as `'warm failed'` — a false-
+    // positive error that pollutes production alerting.
+    //
+    // Race simulation: seed a field, then have the Search-mock handler
+    // DELETE that field row before resolving. warmField's loadField
+    // succeeds (row was present at orchestrator entry); Cropper's
+    // UPDATE silently affects 0 rows (acceptable — see eosda-cropper.ts
+    // line 158); upsertScenes hits 23503 and must be caught + logged
+    // at info level so the route's `.catch(...)` never fires.
+    const { fieldId, db, cleanup } = await seedField();
+    try {
+      const log = makeLogger();
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      fetchSpy.mockImplementation(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('/api/render/cropper/')) {
+          return makeJsonResponse(200, { cropper_ref: VALID_HASH });
+        }
+        if (url.includes('/api/lms/search/v2/sentinel2')) {
+          // Drop the parent row before upsertScenes fires.
+          await db.execute(sql`DELETE FROM fields WHERE id = ${fieldId}`);
+          return makeJsonResponse(200, {
+            meta: { found: 1 },
+            results: [makeSearchScene()],
+          });
+        }
+        throw new Error(`unexpected URL ${url}`);
+      });
+
+      // Must not reject: the FK violation is caught, logged at info,
+      // and warmField returns cleanly so the route-level `.catch(...)`
+      // never fires.
+      await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
+
+      // Should be info-level (benign race), NOT error-level.
+      expect(log.error).not.toHaveBeenCalled();
+      const benignLogged = log.info.mock.calls.some(
+        ([payload, msg]) =>
+          typeof msg === 'string' &&
+          msg.includes('field deleted before scene cache wrote') &&
+          (payload as { fieldId: string }).fieldId === fieldId,
+      );
+      expect(benignLogged).toBe(true);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('still rejects upsertScenes failures that are NOT the delete race (so DB outages still alert)', async () => {
+    // Defense check: the FK-23503 special-case must not swallow other
+    // DB errors. We construct a real `pg.DatabaseError` with SQLSTATE
+    // `08006` (connection_failure) so the `instanceof DatabaseError`
+    // arm of the catch is genuinely exercised — the code-path test
+    // would silently regress to "any DatabaseError caught" if a
+    // future refactor dropped the `&& err.code === '23503'` guard.
+    const { DatabaseError } = await import('pg');
+    const { fieldId, cleanup } = await seedField();
+    try {
+      mockFetch({
+        cropper: { status: 200, body: { cropper_ref: VALID_HASH } },
+        searchResponses: [{ body: { meta: { found: 1 }, results: [makeSearchScene()] } }],
+      });
+      const log = makeLogger();
+
+      const dbErr = new DatabaseError('connection terminated', 100, 'error');
+      // SQLSTATE 08006 = connection_failure, NOT 23503 = foreign_key_violation.
+      (dbErr as { code?: string }).code = '08006';
+
+      // Ad-hoc proxy that intercepts the `.insert(...)` chain warmField
+      // uses for upsertScenes, throws the pre-built DatabaseError, and
+      // delegates everything else (loadField's `.select(...)`, the
+      // cropper `.update(...)`) to the real shared db.
+      const { db: realDb } = await import('../db/client.js');
+      const proxyDb = new Proxy(realDb, {
+        get(target, prop, receiver) {
+          if (prop === 'insert') {
+            return () => {
+              throw dbErr;
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof realDb;
+
+      // Non-23503 DatabaseErrors must propagate so Module 4.6's outer
+      // `.catch(...)` records the real outage as `'warm failed'`.
+      await expect(warmField(fieldId, { db: proxyDb, log })).rejects.toBe(dbErr);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
 describe('warmField — security canary', () => {
   it('never includes EOSDA_API_KEY in any log payload', async () => {
     const { fieldId, db, cleanup } = await seedField();

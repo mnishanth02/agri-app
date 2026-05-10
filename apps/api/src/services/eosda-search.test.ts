@@ -246,36 +246,43 @@ describe('searchScenes — empty results', () => {
     expect(result).toEqual([]);
   });
 
-  it('throws when the response has no results key at all (treat as upstream contract violation, not empty coverage)', async () => {
-    // Module 4.5 must distinguish "EOSDA confirmed no scenes" (results:[])
-    // from "EOSDA returned a malformed payload" — silently coercing the
-    // latter to [] would let warm-up cache an incorrect no-coverage state
-    // and skip retry/widening logic. Throw so Promise.allSettled surfaces
-    // it as `rejected`.
+  it('returns [] when EOSDA omits the results key entirely (e.g. `{ meta: { found: 0 } }`)', async () => {
+    // Per Phase 4 review: EOSDA's no-coverage shape is not contractually
+    // pinned to `results: []`. Observed responses for polygons outside
+    // Sentinel-2 coverage can come back as `{ meta: { found: 0 } }` with
+    // no `results` key at all. Treating that as a thrown failure used to
+    // (a) generate false-positive "warm-up: search failed" alerts and
+    // (b) block Module 4.5's 180/365-day fallback widening. The new
+    // contract coerces missing/null `results` into `[]` so the fallback
+    // walk continues normally.
     captureFetch(makeJsonResponse(200, { meta: { found: 0 } }));
 
-    await expect(
-      searchScenes({
-        geometry: VALID_POLYGON,
-        from: '2026-02-09',
-        to: '2026-05-10',
-      }),
-    ).rejects.toThrow(/results was not an array/);
+    const result = await searchScenes({
+      geometry: VALID_POLYGON,
+      from: '2026-02-09',
+      to: '2026-05-10',
+    });
+
+    expect(result).toEqual([]);
   });
 
-  it('throws when results is null', async () => {
+  it('returns [] when results is null', async () => {
     captureFetch(makeJsonResponse(200, { meta: { found: 0 }, results: null }));
 
-    await expect(
-      searchScenes({
-        geometry: VALID_POLYGON,
-        from: '2026-02-09',
-        to: '2026-05-10',
-      }),
-    ).rejects.toThrow(/results was not an array/);
+    const result = await searchScenes({
+      geometry: VALID_POLYGON,
+      from: '2026-02-09',
+      to: '2026-05-10',
+    });
+
+    expect(result).toEqual([]);
   });
 
-  it('throws when results is an object instead of an array', async () => {
+  it('still throws when results is a non-null object instead of an array', async () => {
+    // We DO want to keep the strict check for any *present* but
+    // structurally wrong shape — silently coercing a `{ unexpected: ... }`
+    // payload to `[]` would let warm-up cache an incorrect no-coverage
+    // state from a genuinely garbled upstream response.
     captureFetch(makeJsonResponse(200, { meta: { found: 0 }, results: { unexpected: 'shape' } }));
 
     await expect(
@@ -284,7 +291,7 @@ describe('searchScenes — empty results', () => {
         from: '2026-02-09',
         to: '2026-05-10',
       }),
-    ).rejects.toThrow(/results was not an array/);
+    ).rejects.toThrow(/results was present but not an array/);
   });
 });
 

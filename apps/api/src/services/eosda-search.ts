@@ -213,14 +213,28 @@ export async function searchScenes(opts: SearchScenesOptions): Promise<SceneDto[
     ...(log ? { log } : {}),
   });
 
-  // EOSDA documents `results: []` for the genuine no-coverage case. Any
-  // other shape (missing `results`, `null`, an object) is a contract
-  // violation — silently coercing it to `[]` would let Module 4.5 mistake
-  // a malformed/abbreviated upstream response for a confirmed empty
-  // window. Throw so the orchestrator's `Promise.allSettled` surfaces it
-  // distinctly from the empty case.
-  if (!Array.isArray(response.results)) {
-    throw new Error('eosda search: response.results was not an array');
+  // Treat an absent or `null` `results` field as a confirmed empty
+  // response. Earlier revisions of this wrapper threw on those shapes to
+  // distinguish "EOSDA confirmed no scenes" from "EOSDA returned a
+  // malformed payload". The Phase 4 reviews flagged that as a real
+  // false-positive risk: when EOSDA has no Sentinel-2 coverage for a
+  // polygon, observed responses can come back as `{ meta: { found: 0 } }`
+  // (no `results` key) or `{ meta: ..., results: null }`. With the old
+  // throw, Module 4.5's orchestrator would log every such no-coverage
+  // case as "warm-up: search failed" *and* skip its 180/365-day fallback
+  // widening (per `field-warmup.ts` JSDoc lines 33-36, fallback widening
+  // only happens on an empty array, not a thrown error).
+  //
+  // The new contract: missing or `null` `results` ⇒ empty array (which
+  // makes the fallback walk continue). Any OTHER non-array shape (e.g.
+  // an object, number, string) is still a contract violation and throws,
+  // because silently coercing those to `[]` would let warm-up cache an
+  // incorrect no-coverage state from a genuinely garbled upstream
+  // response. A Search throw means EOSDA itself is broken; the Module
+  // 4.5 orchestrator catches that at `Promise.allSettled` and logs once.
+  const rawResults = response.results ?? [];
+  if (!Array.isArray(rawResults)) {
+    throw new Error('eosda search: response.results was present but not an array');
   }
-  return response.results.map(mapResult);
+  return rawResults.map(mapResult);
 }

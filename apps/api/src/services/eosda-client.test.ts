@@ -273,11 +273,50 @@ describe('eosdaRequest — caller cannot smuggle the key into the path', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('refuses percent-encoded `api_key` query names that decode to api_key', async () => {
+    // URLSearchParams decodes percent sequences in BOTH names and values
+    // at parse time. The literal regex `[?&]api_key=` only catches the
+    // unencoded form; without the post-URL-parse `searchParams.has(...)`
+    // check, a caller could smuggle `%61pi_key=leak` (`%61` = `a`) or
+    // `api%5fkey=leak` (`%5f` = `_`) past the guard and end up shipping
+    // BOTH an encoded `api_key=leak` AND our injected `x-api-key` header
+    // — defeating the "single source of auth" contract.
+    const { calls } = captureFetch(makeJsonResponse(200, {}));
+
+    await expect(eosdaRequest('/api/x?%61pi_key=leak')).rejects.toThrow(/do not put `api_key`/);
+    await expect(eosdaRequest('/api/x?api%5fkey=leak')).rejects.toThrow(/do not put `api_key`/);
+    // Lowercase exact-match is the real auth contract — EOSDA's `api_key`
+    // query param is case-sensitive, so `Api_key` (uppercase) is not an
+    // actual bypass and we deliberately don't reject it (would be
+    // over-defensive and risk false positives on legitimate query keys
+    // that happen to contain the substring).
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses paths containing control characters (CR, LF, NUL, TAB)', async () => {
+    // undici / fetch will eventually reject many of these but with
+    // messages that may echo the full URL — when `useQueryAuth` is on
+    // that would carry the API key. Rejecting up-front in our own
+    // assertSafePath keeps the rejection message clean and prevents
+    // header / request smuggling shapes from ever reaching `fetch`.
+    const { calls } = captureFetch(makeJsonResponse(200, {}));
+
+    await expect(eosdaRequest('/api/x\r\nHost: evil.com')).rejects.toThrow(/control character/);
+    await expect(eosdaRequest('/api/x\nfoo')).rejects.toThrow(/control character/);
+    await expect(eosdaRequest('/api/x\t')).rejects.toThrow(/control character/);
+    await expect(eosdaRequest('/api/x\x00')).rejects.toThrow(/control character/);
+    expect(calls).toHaveLength(0);
+  });
+
   it('does not mention EOSDA_API_KEY in any of its rejection messages', async () => {
     const messages: string[] = [];
     for (const bad of [
       '/api/x?api_key=leak',
+      '/api/x?%61pi_key=leak',
+      '/api/x?api%5fkey=leak',
       '/api/x#frag',
+      '/api/x\r\n',
+      '/api/x\x00',
       '%',
       '.evil.com/x',
       '@evil.com/x',

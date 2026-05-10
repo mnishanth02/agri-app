@@ -95,12 +95,21 @@ function sanitisePathForLog(path: string): string {
 }
 
 /**
- * Defensive check — refuse a caller-supplied `api_key` query parameter,
- * URL fragment, host injection, or any path that the `URL` parser cannot
- * handle.
+ * Defensive check — refuse a caller-supplied `api_key` query parameter
+ * (in any encoding), URL fragment, control-character smuggling, host
+ * injection, or any path that the `URL` parser cannot handle.
  *
- *   - `api_key` in path: would silently bypass our auth contract and leak
- *     the key into any code that touches the URL (logs, fetch errors, etc.).
+ *   - `api_key` in path (any encoding): would silently bypass our auth
+ *     contract and leak the key into any code that touches the URL (logs,
+ *     fetch errors, etc.). The literal regex catches the obvious form;
+ *     the post-`URL`-parse `searchParams.has('api_key')` check catches
+ *     percent-encoded forms like `%61pi_key=` or `api%5fkey=` that
+ *     `URLSearchParams` decodes to `api_key` at parse time but would
+ *     silently bypass a regex that only inspects the raw string.
+ *   - Control characters (`\r`, `\n`, NUL, etc.): undici / fetch will
+ *     reject many of these but with messages that may echo the full URL.
+ *     Rejecting them up-front keeps the pre-fetch error message clean and
+ *     prevents request-smuggling shapes from ever reaching `fetch`.
  *   - `#fragment`: meaningless to backend HTTP (native `fetch` strips it
  *     before sending) but would land verbatim in our log line if we let it
  *     through. Rejecting fragments outright is cheaper than parsing them
@@ -123,6 +132,13 @@ function assertSafePath(path: string): void {
   if (/[?&]api_key=/.test(path)) {
     throw new Error('eosdaRequest: do not put `api_key` in the path; the client manages auth.');
   }
+  // Control / whitespace characters that fetch/undici would either reject
+  // with a URL-echoing message or smuggle as a header break. Cheaper to
+  // refuse them outright than to harden every downstream log line.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: this regex's entire purpose is to detect control characters in untrusted input.
+  if (/[\x00-\x1f\x7f]/.test(path)) {
+    throw new Error('eosdaRequest: path contains a control character.');
+  }
   if (path.includes('#')) {
     throw new Error('eosdaRequest: URL fragments are not allowed in the path.');
   }
@@ -141,6 +157,14 @@ function assertSafePath(path: string): void {
     throw new Error(
       `eosdaRequest: path resolved off-origin (got ${parsed.origin}); expected ${EOSDA_BASE}.`,
     );
+  }
+  // Encoded forms — `%61pi_key=` decodes to `api_key=` only after
+  // URLSearchParams parsing, which the literal regex above never sees.
+  // `URLSearchParams` decodes percent sequences in BOTH names and values
+  // at construction time, so this catches every encoding the regex would
+  // have missed without us re-implementing percent decoding by hand.
+  if (parsed.searchParams.has('api_key')) {
+    throw new Error('eosdaRequest: do not put `api_key` in the path; the client manages auth.');
   }
 }
 

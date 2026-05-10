@@ -54,7 +54,13 @@
  *     drift, etc.) are truly unexpected. We let them reject so Module
  *     4.6's single outer `.catch(...)` (in the route handler) logs them
  *     once with `{ fieldId, err }` — avoiding double-handling where the
- *     outer catch never fires.
+ *     outer catch never fires. The one exception is SQLSTATE `23503`
+ *     (foreign_key_violation) on `upsertScenes`: that means the user
+ *     deleted the field while warm-up was still in flight (the
+ *     CASCADE removed the parent row), which is a benign lifecycle
+ *     event, not a failure. We log it at `info` and return cleanly so
+ *     it never reaches the route-level `.catch(...)` and never
+ *     contributes to error-rate monitors.
  *
  * Logging hygiene:
  *   - Every log payload uses `{ fieldId, err }` or `{ fieldId, status,
@@ -64,6 +70,7 @@
  */
 import type { PolygonGeoJson } from '@viz-crop/shared';
 import { eq } from 'drizzle-orm';
+import { DatabaseError } from 'pg';
 import { type Db, db as sharedDb } from '../db/client.js';
 import { geometryToGeoJson } from '../db/geometry.js';
 import { fields } from '../db/schema.js';
@@ -224,6 +231,25 @@ async function searchLatestSceneWithFallback(
  *   cleanly. Lets `loadField` / `upsertScenes` failures reject so the
  *   Module 4.6 outer `.catch(...)` records them.
  */
+/**
+ * Walk the cause chain looking for a `pg.DatabaseError` with SQLSTATE
+ * `23503` (foreign_key_violation). Drizzle 0.45 wraps every query
+ * failure in `DrizzleQueryError`, exposing the underlying pg error at
+ * `.cause` — so a naive `err instanceof DatabaseError` check would
+ * miss every real production case. We bound the walk at 8 hops to
+ * avoid pathological cyclic causes.
+ */
+function isForeignKeyViolation(err: unknown): boolean {
+  let current: unknown = err;
+  for (let i = 0; i < 8 && current != null; i += 1) {
+    if (current instanceof DatabaseError && current.code === '23503') {
+      return true;
+    }
+    current = (current as { cause?: unknown } | null)?.cause;
+  }
+  return false;
+}
+
 export async function warmField(fieldId: string, options: WarmFieldOptions = {}): Promise<void> {
   const {
     db = sharedDb,
@@ -279,7 +305,31 @@ export async function warmField(fieldId: string, options: WarmFieldOptions = {})
     return;
   }
 
-  // Let upsertScenes failures reject (DB went away, etc.) so the
-  // Module 4.6 outer catch records them.
-  await upsertScenes(field.id, [latestScene], { db });
+  // Delete-after-create race: if the user deleted the field while
+  // warm-up was in flight, the `cached_scenes.field_id` FK ON DELETE
+  // CASCADE has already removed the parent row, and a fresh INSERT
+  // raises SQLSTATE `23503` (foreign_key_violation). That is an
+  // expected lifecycle event for a user action, NOT an EOSDA / DB
+  // failure — surfacing it as the route's `warm failed` error log
+  // would generate false-positive alerts. Translate into an info log
+  // so operators can still see the race in trace mode without it
+  // tripping production error monitors. Anything else from upsert
+  // (DB went away, schema drift, etc.) still rejects so Module 4.6's
+  // outer `.catch(...)` records it.
+  //
+  // Drizzle 0.45 wraps every query failure in `DrizzleQueryError`
+  // with the underlying `pg.DatabaseError` exposed via `.cause`, so
+  // we check both the immediate error AND its cause chain.
+  try {
+    await upsertScenes(field.id, [latestScene], { db });
+  } catch (err) {
+    if (isForeignKeyViolation(err)) {
+      log.info(
+        { fieldId },
+        'warm-up: field deleted before scene cache wrote; skipping (benign race)',
+      );
+      return;
+    }
+    throw err;
+  }
 }

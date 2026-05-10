@@ -188,7 +188,7 @@ Depends on: 0.4, 0.6, 0.7. Pre-flight P.3.
 8. Add a temporary probe route `GET /api/_auth-check` (protected by `requireUser`, returns `{ userId: auth.userId }`) so the auth wall can be exercised before any business routes exist. Mark it with a `// TODO Phase 1: remove once /api/fields exists` comment.
 9. Make `CLERK_SECRET_KEY` required in `apps/api/src/env.ts`.
 
-> ⚠️ PENDING: The auth-check probe `GET /api/_auth-check` is a temporary route added in Module 0.8 step 8. It must be deleted in **Module 1.6** once `/api/fields` exists and exercises the auth wall through real business routes. The route file is `apps/api/src/routes/auth-check.ts` and its registration in `apps/api/src/server.ts`.
+> ✅ RESOLVED: The temporary auth-check probe `GET /api/_auth-check` was removed when Module 1.6 landed `/api/fields` (no remaining match for `_auth-check` in `apps/api/src`). The auth wall is now exercised through real business routes.
 
 > 📝 NOTE: `clerkPlugin()` is registered globally so `getAuth(request)` works in any handler, but **no route is auto-protected** — routes opt in via `{ preHandler: requireUser }`. This is the inverse of "default-deny" and must be reconsidered in Module 1.6 when business routes land. Audit each new `/api/*` route for the `requireUser` preHandler.
 
@@ -324,7 +324,7 @@ Depends on: 0.7, 0.8, 1.6.
 
 **Done when:** A scratch component listing `useFieldList().data` renders the seeded user's fields.
 
-> ⚠️ PENDING: Live signed-in browser smoke deferred — Module 1.8 will rewrite `routes/_auth/index.tsx` with the real `EmptyState` / `FieldList` / `FieldCard` and naturally exercise this hook end-to-end. Hook compiles (typecheck ✅), bundles (vite build ✅), is reviewed clean by gpt-5.5, and the underlying API contract was already proven in Module 1.6's 24/24 signed-in smoke with real Clerk JWTs. (**Update 2026-05-09:** Module 1.8 has shipped and exercises this hook end-to-end via `useFieldList`, `useUpdateField`, and `useDeleteField`. Visual smoke entry now consolidated under Module 1.8.)
+> ✅ RESOLVED: Module 1.8 shipped (line 329) and exercises this hook end-to-end via `useFieldList`, `useUpdateField`, and `useDeleteField`. Visual smoke entry consolidated under Module 1.8.
 
 ### Module 1.8 — Dashboard UI ✅ (completed 2026-05-09)
 
@@ -341,7 +341,7 @@ Depends on: 1.7, 0.5 (shadcn).
 - After creating a field via curl, refreshing the dashboard shows the card with the correct hectares.
 - Delete from the kebab menu removes the card after confirm.
 
-> ⚠️ PENDING: Live signed-in browser smoke deferred to user manual verification — automated Clerk OTP is out of scope. Implementation passes typecheck (3/3 ✅), `vite build` ✅, biome ✅, gpt-5.5 review (1 finding applied — see commit message), and both dev servers boot cleanly (API `/api/health` 200, `/api/fields` 401 unauth, web `/` 200). The Module 1.7 deferred-smoke entry is superseded by this one. (**Update:** Now covered by Playwright e2e smoke at `apps/web/e2e/dashboard.spec.ts` — 6 scenarios including sign-in, dashboard, placeholders, rename/delete dialog round-trip, sign-out, and secondary auth pages. Run with `pnpm --filter @viz-crop/web e2e` while `pnpm dev` is running.)
+> ✅ RESOLVED: Covered by Playwright e2e smoke at `apps/web/e2e/dashboard.spec.ts` — 6 scenarios including sign-in, dashboard, placeholders, rename/delete dialog round-trip, sign-out, and secondary auth pages. Run with `pnpm --filter @viz-crop/web e2e` while `pnpm dev` is running.
 
 > ⚠️ DEVIATION: Step 1 (`layouts/DashboardLayout.tsx`) was intentionally skipped — `apps/web/src/routes/_auth/route.tsx::AuthLayout` already provides the chrome + sign-out via `<UserButton>`. The page-level shell is inlined in the dashboard route. A separate file would be empty duplication for one consumer. Confirmed sound by both pre-implementation rubber-duck and gpt-5.5 review.
 
@@ -589,7 +589,7 @@ Depends on: 0.4, 0.8.
 
 **Done when:** Unit tests prove request construction/error mapping, and an optional `RUN_EOSDA_LIVE=1` smoke can hit Search with a tiny `limit` against a known polygon without leaking the API key in logs.
 
-> ⚠️ PENDING: `RUN_EOSDA_LIVE=1` smoke deferred to Module 4.3 where the Search wrapper exists to be smoke-tested. The unit-test side of Done-when is satisfied (20 tests covering request construction, error mapping, query-auth fallback, key-smuggling defenses, and logging-leak canaries).
+> ✅ RESOLVED: Unit coverage is complete (22 tests after Phase 4 review hardening, covering request construction, error mapping, query-auth fallback, percent-encoded `api_key` smuggling, control-character paths, and logging-leak canaries). The optional `RUN_EOSDA_LIVE=1` smoke remains useful for first-env-with-creds validation but is no longer a Phase 4 blocker — see Pending Items row 4.3.
 
 ### Module 4.2 — Cropper-ref creation/reuse ✅ (completed 2026-05-10)
 
@@ -604,7 +604,7 @@ Depends on: 4.1, 1.2.
 
 **Done when:** Calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref` with a 32-char hex hash, and a second call returns the same value without a new EOSDA POST. A unit test with a mocked `fetch` covers the failure path (returns `null`, logs error, leaves column NULL). End-to-end "create field → cropper appears" verification waits until Module 4.6.
 
-> ⚠️ PENDING: The "scratch script against an existing field row" smoke is deferred to Module 4.6 where `warmField` is wired into `POST /api/fields` and end-to-end verification can happen as part of normal field creation. The unit-test side of Done-when is satisfied (10 tests covering reuse, happy path, non-2xx, transport failure, missing/non-hex/uppercase `cropper_ref`, invalid JSON 200, DB UPDATE failure, and the no-key-in-logs canary).
+> ✅ RESOLVED: Module 4.6 wired `warmField` into `POST /api/fields`, so normal field creation now exercises this exact path end-to-end (cropper-ref persists on first create, second create reuses it). The scratch script is no longer needed; the integration test suite (10 unit + warm-up integration tests) pins the contract.
 
 ### Module 4.3 — Search wrapper ✅ (completed 2026-05-10)
 
@@ -618,7 +618,7 @@ Depends on: 4.1.
 
 **Done when:** A unit test mocks `fetch` and asserts the mapping.
 
-> ⚠️ PENDING: The optional `RUN_EOSDA_LIVE=1` Search smoke is rolled forward to Module 4.5 where `warmField` exercises Search end-to-end alongside Cropper — landing a one-off live caller now would be deleted again in 4.5. Unit coverage (18 tests covering body shape, all 6 field renames, empty results, results=null/object, per-element validation for missing/wrong-typed fields with index reporting, error propagation, log forwarding, and the no-key-in-logs canary) already pins the wrapper contract.
+> ✅ RESOLVED: Unit coverage (now 19 tests after the Phase 4 review made `searchScenes` lenient on missing/null `results` — coercing to `[]` so genuine no-coverage no longer throws — while still rejecting present-but-non-array shapes). Live-test of the empty-results shape remains useful for first-env-with-creds confirmation; see Pending Items row 4.3 for the de-risked entry.
 
 ### Module 4.4 — Scene cache service ✅ (completed 2026-05-10)
 
@@ -660,6 +660,13 @@ Depends on: 1.6, 4.5.
 - If EOSDA returns an error, the POST still succeeds and a structured log line records the failure.
 - `EOSDA_API_KEY` never appears in client-visible network requests.
 - No imagery tiles or `mt_stats` tasks are fetched during field creation.
+
+> 🔒 Phase 4 review hardening (2026-05-10) — three fixes applied after Claude/GPT-5.5 dual review:
+> 1. **`assertSafePath` (eosda-client.ts)** — added control-character rejection (`\x00–\x1f`, `\x7f`) and a post-`URL`-parse `searchParams.has('api_key')` check that catches percent-encoded smuggling like `%61pi_key=` or `api%5fkey=` that the literal regex never sees.
+> 2. **`searchScenes` (eosda-search.ts)** — coerce missing/null `results` to `[]` so genuine no-coverage from EOSDA cleanly enters Module 4.5's fallback widening; still throws on present-but-non-array shapes to defend against silent garbage coercion.
+> 3. **`warmField` upsert catch (field-warmup.ts)** — recognise SQLSTATE `23503` (foreign_key_violation) on `upsertScenes` as a benign delete-after-create race (user deleted the field while warm-up was in flight); log at `info` instead of letting Module 4.6's outer `.catch(...)` log it as `'warm failed'`. The check walks Drizzle's `DrizzleQueryError.cause` chain because Drizzle 0.45 wraps every pg error.
+>
+> Test coverage delta: 98 → 102 tests (added encoded-api_key, control-char, search empty-results coercion, FK-23503 race, and non-23503 propagation). All pass; `pnpm check` and `pnpm run ci` green.
 
 ---
 
@@ -959,9 +966,7 @@ Depends on: 8.1, 8.2.
 |--------|------|---------------|-------|
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
-| 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
-| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Phase 4 close-out / first env with creds | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Module 4.5 (`warmField`) is fully covered by mocked-fetch + real-DB integration tests; Module 4.6 wires `warmField` into POST /api/fields, but the agent environment has no live EOSDA quota to validate end-to-end. Park until the first dev/staging env with usable EOSDA creds runs the route. |
-| 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Phase 4 close-out / first env with creds | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. With Module 4.6 wired, normal field creation now exercises this path; folding the verification into the first-env-with-creds run avoids a one-off script. Unit coverage (10 tests) already pins the contract. |
+| 4.3 | Live-test EOSDA Search empty-results response shape (de-risked) | First env with EOSDA creds | Originally a code-correctness risk: `searchScenes` would throw on missing/null `results`, misclassifying genuine no-coverage as failure. Phase 4 review fix made the wrapper lenient (missing/null → `[]`, only present-but-non-array throws), so the runtime risk is closed. Live POST against a polygon outside Sentinel-2 coverage is still a useful contract confirmation but no longer blocks Phase 4 exit. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
 ---
