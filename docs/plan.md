@@ -15,7 +15,7 @@
 - Do **not** put EOSDA `view_id` directly in a path segment. It contains `/` (for example `S2/43/P/GK/2026/3/23/0`), so the app proxy uses query params for render tiles: `/api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI`.
 - Use the EOSDA `x-api-key` header by default for every upstream call. Only fall back to an `api_key` query param if a live endpoint rejects header auth, and never log full URLs that contain a key.
 - EOSDA Render supports Sentinel-2 index aliases such as `NDVI`, `EVI`, and `NDWI` in the `<bands>` path segment. Use those allowlisted aliases for v2; keep explicit formulas only as a live-tested fallback/advanced path.
-- `cropper_ref` is optional and comes from EOSDA's Cropper API. Until EOSDA confirms the Cropper creation endpoint and response shape, v2 may render scene-wide tiles under the field outline with `eosda_cropper_ref = NULL`.
+- `cropper_ref` is created during warm-up via `POST /api/render/cropper/`; the returned 32-character hex hash is persisted in `fields.eosda_cropper_ref` (TEXT) and added as a query param to every Render tile request. If the POST fails, the column stays NULL and Render falls back to scene-wide tiles under the field outline.
 - Clerk Fastify should be described around `clerkPlugin()` + `getAuth()` and `CLERK_SECRET_KEY`; `CLERK_JWKS_URL` is only needed for a manual JWT-verification implementation.
 - Use the real TanStack devtools package names: `@tanstack/react-router-devtools` and `@tanstack/react-query-devtools`.
 - Minimal tests are in scope from the start: shared zod/geometry validation plus API smoke tests. Full E2E/CI can wait.
@@ -132,7 +132,7 @@ Start these before implementation. ArcGIS and Clerk are quick; EOSDA access/quot
 - Register at [api-connect.eos.com/user-dashboard/](https://api-connect.eos.com/user-dashboard/).
 - **Email api.support@eosda.com** to activate the trial.
 - Save the key as `EOSDA_API_KEY` — backend only, never the browser.
-- Ask support to confirm the Cropper API endpoint/request format for creating a `cropper_ref`, whether Field Management `field_id` can be used for Render clipping, and current trial rate limits. Field clipping is optional for v2 until this is confirmed.
+- Ask support only to confirm current trial rate limits (RPM per endpoint group) and total monthly request quota. The Cropper API creation flow, Render alias support, Search request shape, and Field Management vs Cropper distinction are already documented (see `docs/review-findings.md` §3.5).
 
 ### 3. Clerk (~5 min)
 - Sign up at [clerk.com](https://clerk.com).
@@ -208,10 +208,10 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 
 ### Phase 4 — Background EOSDA warm-up (~1 h)
 - `services/eosda-client.ts` — fetch wrapper, `EOSDA_API_KEY` injection via `x-api-key` header, error mapping, and no logging of full upstream URLs containing credentials.
-- `services/field-warmup.ts` — `void warmField(id).catch(...)` called from `POST /api/fields` after the insert (no `await`). Creates/reuses EOSDA Render `cropper_ref` only if the Cropper API endpoint is confirmed; otherwise leaves it null and continues. Performs a latest-first Sentinel-2 Search for the polygon (`sentinel2`, `shapeRelation: CONTAINS`, cloud 0-80, `sort: { date: 'desc' }`, small `limit`) and upserts the newest available scene metadata to `cached_scenes`. Errors are logged with `fieldId`, never propagated to field creation.
+- `services/field-warmup.ts` — `void warmField(id).catch(...)` called from `POST /api/fields` after the insert (no `await`). Runs `getOrCreateCropperRef(field)` (POST `/api/render/cropper/`) and a latest-first Sentinel-2 Search (`sentinel2`, `shapeRelation: CONTAINS`, cloud 0-80, `sort: { date: 'desc' }`, small `limit`) **in parallel** via `Promise.allSettled`. On success, persists the 32-char `cropper_ref` hash to `fields.eosda_cropper_ref` and upserts the newest available scene metadata to `cached_scenes`. Errors are logged with `fieldId`, never propagated to field creation.
 - Do not fetch six months of imagery, statistics, or tiles during field creation. EOSDA Search metadata is cheap enough to warm; Render tiles and `mt_stats` stay on-demand.
 
-**Verify:** Create a field; the newest available `cached_scenes` row populates when EOSDA has data for that polygon; `eosda_cropper_ref` populates only if the Cropper API path is confirmed. The POST itself returns quickly; if EOSDA fails the create still succeeds and a useful log line is emitted.
+**Verify:** Create a field; the newest available `cached_scenes` row populates when EOSDA has data for that polygon and `eosda_cropper_ref` populates with the 32-char hash returned by the Cropper POST. The POST itself returns quickly; if either upstream call fails the create still succeeds and a useful log line is emitted.
 
 ### Phase 5 — Analysis layout shells + map overlays (~2.5 h)
 - `AnalysisLayout`: full-bleed map + `TopBar` + `RightSidebar` (collapsible icon rail) + `BottomBar` (collapsible tabs).
@@ -225,7 +225,7 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 - `POST /api/eosda/scenes` reads cache first; on miss/stale/force-refresh, EOSDA Search then upsert. This route is the source of available Sentinel-2 timeline dates.
 - `useEosdaScenes(fieldId)` feeds `DateTimeline`.
 - Default to the newest scene with cloud < 30 % when one exists; otherwise select the newest scene and mark it cloudy in the timeline.
-- `GET /api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` proxy with private 24 h Cache-Control; upstream URL is EOSDA `/api/render/<view_id>/<band-alias>/<z>/<x>/<y>` where `band` is allowlisted to `NDVI`/`EVI`/`NDWI`. Add `CALIBRATE=1`, `mimetype=image/png`, visualization params (`COLORMAP`/`MIN_MAX`) where live testing shows they improve alias output, and that field's `cropper_ref` when present.
+- `GET /api/eosda/render/:z/:x/:y?fieldId=...&viewId=...&band=NDVI` proxy with private 24 h Cache-Control; upstream URL is EOSDA `/api/render/<view_id>/<band-alias>/<z>/<x>/<y>` where `band` is allowlisted to `NDVI`/`EVI`/`NDWI`. Add `CALIBRATE=1`, `mimetype=image/png`, explicit per-band visualization params (`COLORMAP`/`MIN_MAX`: `RdYlGn` + `-1,1` for NDVI/EVI, `Blues` + `-1,1` for NDWI), and that field's `cropper_ref` when present.
 - `NdviLayer` adds MapLibre `raster` source via the proxied URL; opacity from Zustand (default 0.75).
 - Date click → updates Zustand selected `viewId` → `NdviLayer` swaps source.
 - `IndexSwitcher` toggles NDVI / EVI / NDWI.
@@ -233,7 +233,7 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 **Verify:** Open a Karnataka field — NDVI appears after scenes and tiles load; clicking different dates changes the heatmap; cloudy dates marked with a cloud icon; opacity slider works.
 
 ### Phase 7 — Stats + Chart tab (~1.5 h)
-- `POST /api/eosda/stats` cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task for up to three indices with `cloud_masking_level: 1`, poll for completion up to the returned `task_timeout` (cap the HTTP wait to a user-safe maximum and return 504 on timeout), then upsert all returned scenes.
+- `POST /api/eosda/stats` cache-first against `cached_ndvi_stats`; on miss, create EOSDA `mt_stats` task for the field geometry and up to three indices with `cloud_masking_level: 1`, poll for completion up to the returned `task_timeout` (cap the HTTP wait to a user-safe maximum and return 504 on timeout), then upsert all returned scenes.
 - `useEosdaStats(fieldId, ['NDVI', 'EVI', 'NDWI'])`.
 - Render Mean (from EOSDA `average`) / p10 / p90 / median plus cloud/data-coverage confidence in `Sample` pane with color coding.
 - Chart tab in BottomBar: recharts line of Mean NDVI across cached scenes.
@@ -276,8 +276,8 @@ Each phase has a clear goal, tasks, and a green-or-red verification checklist. T
 4. **Sentinel-2 dataset id is `sentinel2`.** `sentinel2l2a` is also documented, but v2 starts with `sentinel2` because the Search examples and current plan use it.
 5. **`view_id` is required for tiles and contains slashes.** Always Search → Render, and pass `viewId` through the app proxy as a query param.
 6. **Render accepts aliases and formulas.** For v2, use the documented aliases `NDVI`, `EVI`, and `NDWI`; only switch to explicit formulas if live testing proves an alias fails or needs custom visualization.
-7. **Clipped render tiles need `cropper_ref`, but the creation endpoint is not yet confirmed.** Store one Cropper `cropper_ref` per field geometry when confirmed; otherwise the NDVI raster is scene-wide under the field outline. Do not assume EOSDA Field Management `field_id` is interchangeable with `cropper_ref` unless support confirms it.
-8. **Statistics are async.** `mt_stats` creates a task, returns `task_timeout`, then the API must poll for results. Recommended date ranges are <=365 days, and only up to 3 indices should be requested at once.
+7. **Clipped render tiles use `cropper_ref` from the documented Cropper API.** Warm-up POSTs the field polygon to `/api/render/cropper/` and persists the returned 32-character hex hash in `fields.eosda_cropper_ref` (TEXT). The same hash is reusable for the polygon's lifetime and is added as a query param to every Render tile request. If the POST fails, the column stays NULL and the NDVI raster is scene-wide under the field outline — acceptable v2 fallback. Do not substitute EOSDA Field Management `field_id` for `cropper_ref`; they are different identifiers for different systems.
+8. **Statistics are async and geometry-based.** `mt_stats` creates a task, returns `task_timeout`, then the API must poll for results. Send the owned field polygon as `params.geometry`; do not substitute Render `cropper_ref` unless EOSDA later documents or live-confirms that path. Recommended date ranges are <=365 days, and only up to 3 indices should be requested at once.
 9. **Statistics response nests index values.** Read `result[].indexes[indexName].average` and map it to the app's `mean` field/UI label.
 10. **Polygon size limit 200 km² is an app guardrail.** Validate frontend + backend and confirm any account-specific EOSDA limits before widening it.
 
@@ -417,7 +417,7 @@ After Phase 8, this must pass cold from `pnpm install && docker compose up -d &&
 | State: TanStack Query + Zustand | May 2026 | Server vs client state separation; rate-limit caching critical; use selectors to avoid map re-renders from form/UI state |
 | EOSDA proxy contract corrected | May 2026 | Official docs require Search → Render by `view_id`; Statistics is async `mt_stats`; render route uses query params because `view_id` contains slashes |
 | EOSDA Render v2 band contract | May 2026 | Official docs list Sentinel-2 aliases for `NDVI`, `EVI`, and `NDWI`; use aliases first, with formula fallback only after live testing |
-| EOSDA Cropper fallback | May 2026 | Render documents optional `cropper_ref`, but Cropper creation remains unconfirmed; v2 may render scene-wide tiles under the field outline until support confirms the creation flow |
+| EOSDA Cropper integration | May 2026 | `POST /api/render/cropper/` is documented and accepts a GeoJSON Feature, returning a 32-char hex `cropper_ref`. Warm-up persists it to `fields.eosda_cropper_ref` and adds it to every Render tile request. Failure path: log + leave NULL + scene-wide fallback. |
 
 ---
 

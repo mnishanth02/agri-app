@@ -73,6 +73,15 @@ export const fields = pgTable(
  *
  * Uniqueness on `(field_id, view_id)` lets us upsert idempotently and prevents
  * duplicate scene rows when the warm-up service re-runs for the same field.
+ *
+ * - `scene_id` is the EOSDA `sceneID` projection (e.g. `S2B_tile_…`). Nullable
+ *   at the DB level so future backfills (or a fielded-projection rename on
+ *   EOSDA's side) don't break the schema; `upsertScenes` always writes a value.
+ * - `last_seen_at` records when the warm-up service last confirmed this scene
+ *   exists in the EOSDA Search response. Distinct from `created_at`: that
+ *   column captures the first time we ever saw this `(field, view_id)` pair,
+ *   while `last_seen_at` advances on every successful warm-up so Phase 7's
+ *   "recheck if older than N days" logic has a stable signal.
  */
 export const cachedScenes = pgTable(
   'cached_scenes',
@@ -82,12 +91,14 @@ export const cachedScenes = pgTable(
       .notNull()
       .references(() => fields.id, { onDelete: 'cascade' }),
     viewId: text('view_id').notNull(),
+    sceneId: text('scene_id'),
     source: varchar('source', { length: 20 }).notNull().default('sentinel-2'),
     sceneDate: date('scene_date').notNull(),
     cloudPercent: numeric('cloud_percent', { precision: 5, scale: 2 }),
     dataCoveragePercent: numeric('data_coverage_percent', { precision: 5, scale: 2 }),
     tmsTemplate: text('tms_template'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
     unique('cached_scenes_field_view_unique').on(t.fieldId, t.viewId),

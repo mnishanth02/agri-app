@@ -65,6 +65,14 @@ vi.mock('@clerk/fastify', () => ({
   },
 }));
 
+// Stub the Module 4.6 warm-up so the CRUD smoke tests don't trigger real
+// EOSDA Cropper/Search calls on every POST. The wire-up itself is exercised
+// by `fields.warmup.test.ts`; here we just need the route to behave as if
+// warm-up succeeded immediately and synchronously.
+vi.mock('../src/services/field-warmup.js', () => ({
+  warmField: vi.fn(async () => {}),
+}));
+
 import { fields } from '../src/db/schema.js';
 import { buildServer } from '../src/server.js';
 
