@@ -21,13 +21,13 @@
  *     concurrent tests can't collide; `ON DELETE CASCADE` on
  *     `cached_scenes.field_id` cleans up scene rows in the same teardown.
  *
- * Cropper-throw injection (test 8): the production code in
+ * Cropper-throw injection: the production code in
  * `services/eosda-cropper.ts` swallows every error to `null`, so we
  * can't make it throw via fetch. We use `vi.mock('./eosda-cropper.js', …)`
  * with `vi.fn(actual.getOrCreateCropperRef)` so the function defaults to
  * the real implementation but can be overridden per-test with
  * `mockRejectedValueOnce(…)` to exercise the defensive
- * `cropperResult.status === 'rejected'` branch.
+ * fire-and-forget `.catch(...)` branch.
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -313,12 +313,14 @@ describe('warmField — happy path (cropper + search)', () => {
 
       await warmField(fieldId, { db, log });
 
-      expect(cropperCalls).toHaveLength(1);
+      await vi.waitFor(() => expect(cropperCalls).toHaveLength(1));
       // Only one Search call — the 90-day window returned a hit, so no
       // fallback expansion.
       expect(searchCalls).toHaveLength(1);
 
-      expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      await vi.waitFor(async () => {
+        expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      });
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
       const row = rows[0];
@@ -379,10 +381,12 @@ describe('warmField — fallback windows', () => {
 
       await warmField(fieldId, { db, log });
 
-      expect(cropperCalls).toHaveLength(1);
+      await vi.waitFor(() => expect(cropperCalls).toHaveLength(1));
       expect(searchCalls).toHaveLength(3);
       // Cropper still persisted.
-      expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      await vi.waitFor(async () => {
+        expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      });
       // No scenes cached.
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(0);
@@ -410,9 +414,11 @@ describe('warmField — search failure', () => {
 
       await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
 
-      // Cropper was attempted and persisted.
-      expect(cropperCalls).toHaveLength(1);
-      expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      // Cropper was attempted and persisted independently of Search failure.
+      await vi.waitFor(() => expect(cropperCalls).toHaveLength(1));
+      await vi.waitFor(async () => {
+        expect(await readCropperRef(db, fieldId)).toBe(VALID_HASH);
+      });
       // Exactly one search call — no fallback expansion on a thrown error.
       expect(searchCalls).toHaveLength(1);
       // No scenes cached.
@@ -464,10 +470,12 @@ describe('warmField — cropper failure (internal swallow)', () => {
 
       await warmField(fieldId, { db, log });
 
-      expect(cropperCalls).toHaveLength(1);
+      await vi.waitFor(() => expect(cropperCalls).toHaveLength(1));
       expect(searchCalls).toHaveLength(1);
       // Cropper write never happened — column stays NULL.
-      expect(await readCropperRef(db, fieldId)).toBeNull();
+      await vi.waitFor(async () => {
+        expect(await readCropperRef(db, fieldId)).toBeNull();
+      });
       // Scene was still upserted.
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
@@ -527,6 +535,7 @@ describe('warmField — defensive cropper rejection branch', () => {
       const log = makeLogger();
 
       await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
+      await Promise.resolve();
 
       const defensive = log.error.mock.calls.find(
         ([, msg]) => msg === 'warm-up: cropper rejected unexpectedly',
@@ -537,6 +546,27 @@ describe('warmField — defensive cropper rejection branch', () => {
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
       expect(rows[0]?.scene_id).toBe('S2B_def');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('does not wait for a cropper promise that never settles before upserting the scene', async () => {
+    const { fieldId, db, cleanup } = await seedField();
+    try {
+      vi.mocked(getOrCreateCropperRef).mockImplementationOnce(
+        () => new Promise<string | null>(() => {}),
+      );
+      const scene = makeSearchScene({ sceneID: 'S2B_hung_cropper', view_id: 'view/hung/01' });
+      mockFetch({
+        searchResponses: [{ status: 200, body: { results: [scene] } }],
+      });
+
+      await expect(warmField(fieldId, { db, log: makeLogger() })).resolves.toBeUndefined();
+
+      const rows = await readCachedScenes(db, fieldId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.scene_id).toBe('S2B_hung_cropper');
     } finally {
       await cleanup();
     }

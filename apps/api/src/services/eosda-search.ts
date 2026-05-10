@@ -33,8 +33,8 @@
  *      itself returns `{ results: [] }`. Network/transport failures and
  *      EOSDA non-2xx responses bubble up as the original error from
  *      `eosdaRequest` (a `TypeError` or an `EosdaError`); the orchestrator
- *      handles those via `Promise.allSettled`. This keeps "no coverage"
- *      distinguishable from "EOSDA is down" at the call site.
+ *      catches those directly. This keeps "no coverage" distinguishable
+ *      from "EOSDA is down" at the call site.
  */
 import type { PolygonGeoJson } from '@viz-crop/shared';
 import { type EosdaLogger, eosdaRequest } from './eosda-client.js';
@@ -189,8 +189,8 @@ function mapResult(raw: unknown, index: number): SceneDto {
  * 4.5) should treat that as a non-error and consider widening the date
  * range.
  *
- * Throws on transport/HTTP errors so `Promise.allSettled` in Module 4.5
- * can distinguish "no scenes" from "EOSDA failed".
+ * Throws on transport/HTTP errors so Module 4.5 can distinguish "no
+ * scenes" from "EOSDA failed".
  */
 export async function searchScenes(opts: SearchScenesOptions): Promise<SceneDto[]> {
   const { geometry, from, to, limit = DEFAULT_LIMIT, page = DEFAULT_PAGE, log } = opts;
@@ -231,7 +231,7 @@ export async function searchScenes(opts: SearchScenesOptions): Promise<SceneDto[
   // because silently coercing those to `[]` would let warm-up cache an
   // incorrect no-coverage state from a genuinely garbled upstream
   // response. A Search throw means EOSDA itself is broken; the Module
-  // 4.5 orchestrator catches that at `Promise.allSettled` and logs once.
+  // 4.5 orchestrator catches that and logs once.
   const rawResults = response.results ?? [];
   if (!Array.isArray(rawResults)) {
     throw new Error('eosda search: response.results was present but not an array');

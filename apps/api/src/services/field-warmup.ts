@@ -12,15 +12,14 @@
  *   3. Persisting the latest scene into `cached_scenes` (Module 4.4) when
  *      Search succeeds.
  *
- * Why `Promise.allSettled` instead of `Promise.all`:
+ * Cropper/Search orchestration:
+ *   - Cropper is kicked off fire-and-forget with its own `.catch(...)`.
+ *     Search is awaited independently so a slow/hung Cropper POST never
+ *     delays scene caching once Search returns.
  *   - `searchScenes` throws on transport / non-2xx EOSDA responses (per
  *     `services/eosda-search.ts` JSDoc lines 31-37 and the explicit
- *     `throw` at line 222). With `Promise.all`, a Search throw would
- *     short-circuit the orchestrator and *also* discard whatever the
- *     Cropper call resolved with by the time we return. `allSettled`
- *     keeps both outcomes inspectable: we can persist Cropper's effect
- *     (which it has already written via its own `UPDATE` on success)
- *     and still log Search's failure with `{ fieldId, err }` cleanly.
+ *     `throw` at line 222). The Search branch catches that directly and
+ *     logs `{ fieldId, err }` cleanly.
  *
  * Window-fallback strategy for Search:
  *   - Sentinel-2 cadence over India is ~5 days, but cloud filters at
@@ -39,10 +38,9 @@
  *   - Field-not-found: log `warn` `{ fieldId }` and return cleanly.
  *   - Cropper failure: `getOrCreateCropperRef` swallows everything to
  *     `null` internally (see `services/eosda-cropper.ts` lines 27-32)
- *     and never throws under current behaviour. We still inspect the
- *     `Promise.allSettled` result for a `rejected` status as a
- *     defensive guard — if a future change leaks an exception out of
- *     Cropper, we want a structured log rather than a silently swallowed
+ *     and never throws under current behaviour. We still attach a
+ *     defensive `.catch(...)` — if a future change leaks an exception out
+ *     of Cropper, we want a structured log rather than an
  *     `unhandledRejection` in the warm-up.
  *   - Search failure (thrown): log `error` `{ fieldId, err }` and return
  *     cleanly. We do NOT re-throw and we do NOT try fallback windows.
@@ -196,8 +194,7 @@ export function dateRangeForWindow(now: Date, days: number): { from: string; to:
  * window. Returns `null` if every window returned `[]`.
  *
  * Throws (does NOT widen) on transport / EOSDA errors. The caller
- * (`warmField`) catches the throw at the `Promise.allSettled` boundary
- * and logs it as a Search failure.
+ * (`warmField`) catches the throw and logs it as a Search failure.
  */
 async function searchLatestSceneWithFallback(
   geometry: PolygonGeoJson,
@@ -223,8 +220,8 @@ async function searchLatestSceneWithFallback(
  * Run the post-create warm-up flow for `fieldId`.
  *
  * - Loads the field; logs warn + returns if it doesn't exist.
- * - Runs Cropper + latest-scene Search (with fallback windows) in
- *   parallel via `Promise.allSettled`.
+ * - Starts Cropper in the background, then awaits latest-scene Search
+ *   (with fallback windows) independently.
  * - On Search success, upserts `latestScene` into `cached_scenes`
  *   (or no-ops on `null`, since `upsertScenes([])` is itself a no-op).
  * - Logs `{ fieldId, err }` for any inspected failure and returns
@@ -279,24 +276,23 @@ export async function warmField(fieldId: string, options: WarmFieldOptions = {})
   // 180-day window by seconds vs the 90-day window.
   const nowAt = now();
 
-  const [cropperResult, searchResult] = await Promise.allSettled([
-    getOrCreateCropperRef(field, { db, log }),
-    searchLatestSceneWithFallback(field.geometry, windows, nowAt, log),
-  ]);
-
   // Cropper today never throws (it swallows internally to `null`), but
   // a future change could leak an exception. Surface that defensively
-  // rather than letting it become an `unhandledRejection`.
-  if (cropperResult.status === 'rejected') {
-    log.error({ fieldId, err: cropperResult.reason }, 'warm-up: cropper rejected unexpectedly');
-  }
+  // rather than letting it become an `unhandledRejection`. Do not await
+  // it here: scene caching should proceed as soon as Search finishes,
+  // even if the Cropper POST is slow or never settles.
+  void getOrCreateCropperRef(field, { db, log }).catch((err) => {
+    log.error({ fieldId, err }, 'warm-up: cropper rejected unexpectedly');
+  });
 
-  if (searchResult.status === 'rejected') {
-    log.error({ fieldId, err: searchResult.reason }, 'warm-up: search failed');
+  let latestScene: SceneDto | null;
+  try {
+    latestScene = await searchLatestSceneWithFallback(field.geometry, windows, nowAt, log);
+  } catch (err) {
+    log.error({ fieldId, err }, 'warm-up: search failed');
     return;
   }
 
-  const latestScene = searchResult.value;
   if (latestScene === null) {
     log.info({ fieldId }, 'warm-up: no scenes found in any fallback window');
     // Empty `scenes` is a no-op inside `upsertScenes`, but skipping the
