@@ -632,7 +632,7 @@ Depends on: 4.3, 1.2.
 
 **Done when:** Inserts and re-inserts of the same `view_id` are idempotent.
 
-### Module 4.5 — `field-warmup` orchestrator
+### Module 4.5 — `field-warmup` orchestrator ✅ (completed 2026-05-10)
 
 Depends on: 4.2, 4.3, 4.4.
 
@@ -960,7 +960,7 @@ Depends on: 8.1, 8.2.
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
-| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.5 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Now that the typed wrapper (Module 4.3) exists, fold the live smoke into Module 4.5 where `warmField` exercises Search alongside Cropper end-to-end — landing a one-off live caller now would be deleted again in 4.5. |
+| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.6 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Module 4.5 (`warmField`) is fully covered by mocked-fetch + real-DB integration tests; the natural place for a live end-to-end smoke is Module 4.6 where `warmField` runs in the POST /api/fields flow against the real EOSDA backend. |
 | 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Module 4.6 | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. Folding this into Module 4.6's "create field → warm-up runs" smoke avoids a one-off script that has to be deleted later; unit coverage (10 tests) already pins the contract. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
