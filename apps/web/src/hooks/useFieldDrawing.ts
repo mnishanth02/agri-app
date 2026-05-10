@@ -379,14 +379,20 @@ export function useFieldDrawing(): UseFieldDrawingResult {
       draw.off('finish', handleFinish);
 
       // `stop()` unregisters the adapter (removing its sources/layers from
-      // the map) and clears the store. Catch and swallow — if the map has
-      // already been removed by an outer unmount, the adapter's
-      // unregister can throw on a missing canvas/style; that's not
-      // actionable here.
-      try {
-        draw.stop();
-      } catch (err) {
-        console.warn('[useFieldDrawing] draw.stop() failed during cleanup', err);
+      // the map) and clears the store. The adapter touches `map.getSource`
+      // / `map.getLayer` during unregister, which throws once `map.style`
+      // has been disposed by `useMapInstance`'s `map.remove()` running
+      // first during a route-unmount race. Skip the stop in that case —
+      // `map.remove()` already disposed every source and layer the
+      // adapter installed. Otherwise call it and swallow any residual
+      // failure for resilience.
+      const mapStillAlive = (map as unknown as { style?: unknown }).style != null;
+      if (mapStillAlive) {
+        try {
+          draw.stop();
+        } catch (err) {
+          console.warn('[useFieldDrawing] draw.stop() failed during cleanup', err);
+        }
       }
 
       if (useFieldStore.getState().draftPolygon === null) {

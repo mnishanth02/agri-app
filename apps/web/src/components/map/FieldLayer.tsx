@@ -112,10 +112,21 @@
  * (e.g., the style was replaced and already wiped some IDs) doesn't throw.
  */
 
-import type { GeoJSONSource } from 'maplibre-gl';
+import type { GeoJSONSource, Map as MaplibreMap } from 'maplibre-gl';
 import { useEffect } from 'react';
 import { useMapContext } from '@/components/map/MapContext';
 import { useFieldStore } from '@/stores/useFieldStore';
+
+/**
+ * True iff `map` still has a live MapLibre style. After `map.remove()`
+ * the internal `style` is disposed and any source/layer call throws
+ * `Cannot read properties of undefined (reading 'getLayer'/'getSource')`.
+ * Cleanups that may run after the parent `<MapView>` has already torn
+ * the map down (route-unmount race) gate on this.
+ */
+function isMapAlive(map: MaplibreMap): boolean {
+  return (map as unknown as { style?: unknown }).style != null;
+}
 
 /**
  * IDs are exported as module-level constants so future modules (3.6 wire-up,
@@ -178,9 +189,11 @@ export function FieldLayer({ polygon }: FieldLayerProps) {
     // cleanup may have left these in place. Tearing down before adding
     // means the second setup pass observes a clean slate. Order matters:
     // layers reference the source.
-    if (map.getLayer(FIELD_OUTLINE_LAYER_ID)) map.removeLayer(FIELD_OUTLINE_LAYER_ID);
-    if (map.getLayer(FIELD_FILL_LAYER_ID)) map.removeLayer(FIELD_FILL_LAYER_ID);
-    if (map.getSource(FIELD_SOURCE_ID)) map.removeSource(FIELD_SOURCE_ID);
+    if (isMapAlive(map)) {
+      if (map.getLayer(FIELD_OUTLINE_LAYER_ID)) map.removeLayer(FIELD_OUTLINE_LAYER_ID);
+      if (map.getLayer(FIELD_FILL_LAYER_ID)) map.removeLayer(FIELD_FILL_LAYER_ID);
+      if (map.getSource(FIELD_SOURCE_ID)) map.removeSource(FIELD_SOURCE_ID);
+    }
 
     map.addSource(FIELD_SOURCE_ID, {
       type: 'geojson',
@@ -219,6 +232,13 @@ export function FieldLayer({ polygon }: FieldLayerProps) {
       // `removeSource` while layers still reference it). Each step is
       // guarded so a partial teardown — e.g., the style was already
       // replaced and wiped some IDs — doesn't throw.
+      //
+      // The outer `isMapAlive` guard handles the route-unmount race where
+      // MapView's `useMapInstance` cleanup tears down the map (nulling
+      // `map.style`) before this sibling/child cleanup runs. Without it,
+      // `map.getLayer(...)` throws `Cannot read properties of undefined
+      // (reading 'getLayer')` and escapes to the route error boundary.
+      if (!isMapAlive(map)) return;
       if (map.getLayer(FIELD_OUTLINE_LAYER_ID)) map.removeLayer(FIELD_OUTLINE_LAYER_ID);
       if (map.getLayer(FIELD_FILL_LAYER_ID)) map.removeLayer(FIELD_FILL_LAYER_ID);
       if (map.getSource(FIELD_SOURCE_ID)) map.removeSource(FIELD_SOURCE_ID);
