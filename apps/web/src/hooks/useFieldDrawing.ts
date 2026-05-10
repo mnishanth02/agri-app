@@ -261,6 +261,8 @@ export function useFieldDrawing(): UseFieldDrawingResult {
 
       const polygon = readLatestPolygon();
       if (!polygon) {
+        // Delete/cancel paths can remove Terra Draw's feature after a live
+        // validation update; clear the draft so stale area/errors disappear.
         clearDraft();
         return;
       }
@@ -388,7 +390,7 @@ export function useFieldDrawing(): UseFieldDrawingResult {
       }
 
       if (useFieldStore.getState().draftPolygon === null) {
-        clearDraft();
+        setDraftValidation({ areaHectares: null, valid: false, errors: [] });
       }
 
       drawRef.current = null;
