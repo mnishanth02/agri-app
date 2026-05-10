@@ -292,6 +292,8 @@ Depends on: 1.4.
 
 **Done when:** `pnpm test` runs and the suite passes.
 
+> ✅ RESOLVED in Module 3.2 (2026-05-09): Terra Draw's built-in `ValidateNotSelfIntersecting` is now invoked in `useFieldDrawing`'s `finish` handler, so bowties are caught client-side with a toast before they reach the store. The PostGIS `ST_IsValid` CHECK constraint remains as a defense-in-depth backstop for any path that bypasses the drawing UI (e.g., a future API import).
+
 ### Module 1.6 — Field routes (CRUD) ✅ (completed 2026-05-09)
 
 Depends on: 1.2, 1.3, 1.4, 0.8.
@@ -451,13 +453,13 @@ Depends on: 2.4.
 
 ---
 
-## Phase 3 — Drawing + Layer 3 + create form
+## Phase 3 — Drawing + Layer 3 + create form ✅ (completed 2026-05-10)
 
 **Goal:** A signed-in user can draw a polygon on the create-map, fill out the field form, and successfully create a field that appears on the dashboard.
 
 **Phase entry:** Phases 1 and 2 complete.
 
-### Module 3.1 — `useUiStore` and `useFieldStore` (Zustand)
+### Module 3.1 — `useUiStore` and `useFieldStore` (Zustand) ✅ (completed 2026-05-09)
 
 Depends on: 0.5.
 
@@ -472,7 +474,11 @@ Depends on: 0.5.
 
 **Done when:** A scratch component reads/writes both stores and re-renders only for selected slices.
 
-### Module 3.2 — Terra-draw integration
+> ⚠️ DEVIATION: `apps/web` has no test runner (only `apps/api` and `packages/shared` use vitest). Per the module guidance, no runner was added for a single module. Verification instead lives in `apps/web/src/stores/__scratch__/`: a `StoreScratch.tsx` manual harness (never mounted in any route) plus a non-React `verify.mts` runtime harness (run with `node --experimental-strip-types apps/web/src/stores/__scratch__/verify.mts`). The harness subscribes to the whole store with Zustand v5's plain `subscribe(listener)` and applies the selector + equality check manually — exactly mirroring `useSyncExternalStoreWithSelector` (used by Zustand's React hook + `useShallow`). It asserts unrelated-slice updates do not "render", and that `setDraftGeometry` produces a single render across polygon + validation. 20/20 checks pass.
+
+> ⚠️ DEVIATION: Added a fifth action `setDraftGeometry({ polygon, areaHectares, valid, errors })` on top of the spec's four (`setDraftPolygon`, `setDraftValidation`, `clearDraft`, `setCurrentField`). It atomically writes the polygon and the three validation slices in a single `set()` call so Module 3.2's `useFieldDrawing` only triggers one re-render per Terra Draw `change`/`finish` event instead of two — the gpt-5.5 review of Module 3.1 flagged the two-call pattern as a re-render hazard for consumers selecting `{ draftPolygon, draftValid, draftAreaHectares }` together. The two original setters are retained for the (rarer) cases where polygon and validation arrive separately and for the `setDraftPolygon(null)` "reset" ergonomics from the toolbar's clear button.
+
+### Module 3.2 — Terra-draw integration ✅ (completed 2026-05-09)
 
 Depends on: 2.4, 3.1.
 
@@ -489,7 +495,13 @@ Depends on: 2.4, 3.1.
 
 **Done when:** Drawing a polygon on the map writes a GeoJSON Polygon plus validation state into `useFieldStore`; self-intersecting polygons show a toast and are discarded; too-small/too-large/outside-India polygons remain visible but are marked invalid with inline errors.
 
-### Module 3.3 — `FieldLayer` (Layer 3)
+> ⚠️ DEVIATION: `ValidateNotSelfIntersecting` is invoked **manually inside the `finish` handler** instead of being passed to the polygon mode's `validation` config. Terra Draw's mode-level validation rejects the store write when invalid, which suppresses the `finish` event entirely — the user would see the polygon vanish with no toast and no signal that they need to redraw. Calling the validator ourselves on `finish` keeps the same "bowties never become accepted drafts" guarantee while preserving the toast-and-clear UX the spec requires. See `useFieldDrawing.ts` JSDoc, the `## Why we run ValidateNotSelfIntersecting manually` section.
+
+> ⚠️ DEVIATION: Live `change` updates write only `draftAreaHectares` (via `setDraftValidation`), **not** the partial polygon to `draftPolygon`. Module 3.3's `<FieldLayer />` reads `draftPolygon` and would otherwise paint a half-formed shape on top of Terra Draw's own provisional render. The full polygon is written on `finish` via `setDraftGeometry`. This satisfies the "live area/errors" requirement while keeping the visual stack unambiguous.
+
+> ✅ RESOLVED in Module 3.4: The "live errors during `change`" half of the spec was deferred to Module 3.4 — Geometry feedback, which now writes `draftValid` and `draftErrors[]` from the `change` handler so India-bbox / size hints surface live.
+
+### Module 3.3 — `FieldLayer` (Layer 3) ✅ (completed 2026-05-10)
 
 Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
@@ -504,7 +516,9 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
 **Done when:** A drawn polygon shows a translucent fill with a white outline, and clearing the draft removes the layer cleanly.
 
-### Module 3.4 — Geometry feedback (live area + validation hints)
+> ⚠️ DEVIATION: `<FieldLayer />` exposes a single **optional `polygon?: GeoJSON.Polygon | null` prop** instead of two sibling components (`<DraftFieldLayer />` + `<PersistedFieldLayer />`). When the prop is omitted, the component subscribes to `useFieldStore.draftPolygon` (create-field flow). When the prop is provided — including `polygon={null}` — it uses the prop verbatim and ignores the store (analysis screen passing `useField(id).data.geometry`, with `null` while the query is pending). Splitting into two siblings would duplicate the entire MapLibre source/layer/`moveLayer`/style-epoch lifecycle for no payoff; one component with a `undefined` vs `null` distinction keeps the visual contract identical for both consumers and prevents the analysis screen from accidentally leaking draft state. See `FieldLayer.tsx` JSDoc, the `## Why optional polygon prop` section.
+
+### Module 3.4 — Geometry feedback (live area + validation hints) ✅ (completed 2026-05-10)
 
 Depends on: 3.2, 3.3.
 
@@ -513,7 +527,7 @@ Depends on: 3.2, 3.3.
 
 **Done when:** As the user draws, a small chip near the form shows the current area in hectares.
 
-### Module 3.5 — `CreateFieldForm`
+### Module 3.5 — `CreateFieldForm` ✅ (completed 2026-05-10)
 
 Depends on: 1.4 (shared schemas), 3.1, 0.5 (shadcn `Form`).
 
@@ -532,7 +546,9 @@ Depends on: 1.4 (shared schemas), 3.1, 0.5 (shadcn `Form`).
 - Invalid form or missing polygon keeps the button disabled.
 - Server-side validation errors are displayed.
 
-### Module 3.6 — Wire `CreateLayout` form column
+> ⚠️ DEVIATION: The form's `zodResolver` is given a slightly wider local `formSchema` (optional metadata fields are `z.string().max(120).optional()`) instead of `createFieldDto.omit({ geometry: true })` literally. Reason: `createFieldDto` declares `farmerName`/`village`/`district`/`state` as `metadataString.optional()`, which permits `undefined` but **rejects `''`**. With `mode: 'onChange'` and `defaultValues: { farmerName: '' }`, the canonical resolver would mark the form invalid the moment the user focused and blurred (or erased a typo from) any optional field, leaving the submit button stuck disabled. The wider local schema lets `''` pass live validation; on submit, empty optional metadata is normalized to `undefined`, the assembled payload is re-validated against the canonical `createFieldDto.safeParse(...)` for a final contract guard, and only then is `useCreateField().mutateAsync(...)` called. Net effect: identical wire contract, better keystroke-time UX. Documented at the top of `apps/web/src/components/forms/CreateFieldForm.tsx`.
+
+### Module 3.6 — Wire `CreateLayout` form column ✅ (completed 2026-05-10)
 
 Depends on: 2.5, 3.5.
 
@@ -542,7 +558,7 @@ Depends on: 2.5, 3.5.
 
 **Done when:** The full create flow is usable end-to-end on `/fields/new`.
 
-### Phase 3 exit criteria
+### Phase 3 exit criteria ✅ (completed 2026-05-10)
 
 - A signed-in user draws a polygon, fills the form, and lands on `/fields/:id` (which can still be a placeholder).
 - The dashboard reflects the new field with the correct area.
@@ -933,7 +949,6 @@ Depends on: 8.1, 8.2.
 
 | Module | Item | Blocked until | Notes |
 |--------|------|---------------|-------|
-| 1.5 | Add client-side `ST_IsValid`-equivalent self-intersection check to drawing validation | Phase 3 (Module 3.2) | Schema currently relies on the PostGIS `ST_IsValid` CHECK constraint to reject bowties / self-intersections at insert time. Module 3.2 must add Terra Draw `ValidateNotSelfIntersecting` or an equivalent shared segment-intersection guard so the user gets instant feedback while drawing instead of a 400 from the API. |
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.2 | Confirm EOSDA Cropper API endpoint/request format for creating a Render `cropper_ref` | Before requiring field-clipped NDVI tiles | Path B is accepted for v2: leave `eosda_cropper_ref` NULL and render scene-wide tiles under the field outline. Do not substitute Field Management `field_id` unless EOSDA confirms it is accepted by Render as `cropper_ref`. |
