@@ -620,7 +620,7 @@ Depends on: 4.1.
 
 > ⚠️ PENDING: The optional `RUN_EOSDA_LIVE=1` Search smoke is rolled forward to Module 4.5 where `warmField` exercises Search end-to-end alongside Cropper — landing a one-off live caller now would be deleted again in 4.5. Unit coverage (18 tests covering body shape, all 6 field renames, empty results, results=null/object, per-element validation for missing/wrong-typed fields with index reporting, error propagation, log forwarding, and the no-key-in-logs canary) already pins the wrapper contract.
 
-### Module 4.4 — Scene cache service
+### Module 4.4 — Scene cache service ✅ (completed 2026-05-10)
 
 Depends on: 4.3, 1.2.
 

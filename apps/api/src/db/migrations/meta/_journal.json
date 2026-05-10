@@ -8,6 +8,13 @@
       "when": 1778258557258,
       "tag": "0000_green_swarm",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778424119112,
+      "tag": "0001_gigantic_starjammers",
+      "breakpoints": true
     }
   ]
 }
