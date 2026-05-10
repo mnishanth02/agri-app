@@ -499,9 +499,9 @@ Depends on: 2.4, 3.1.
 
 > ⚠️ DEVIATION: Live `change` updates write only `draftAreaHectares` (via `setDraftValidation`), **not** the partial polygon to `draftPolygon`. Module 3.3's `<FieldLayer />` reads `draftPolygon` and would otherwise paint a half-formed shape on top of Terra Draw's own provisional render. The full polygon is written on `finish` via `setDraftGeometry`. This satisfies the "live area/errors" requirement while keeping the visual stack unambiguous.
 
-> ⚠️ PENDING: The "live errors during `change`" half of the spec is intentionally minimal — the change handler only updates `draftAreaHectares` and writes empty `errors`. Surfacing in-progress India-bbox / size hints (e.g., turning the ring red as the user drags it outside India) is deferred to **Module 3.4 — Geometry feedback**, which owns the inline error UX.
+> ✅ RESOLVED in Module 3.4: The "live errors during `change`" half of the spec was deferred to Module 3.4 — Geometry feedback, which now writes `draftValid` and `draftErrors[]` from the `change` handler so India-bbox / size hints surface live.
 
-### Module 3.3 — `FieldLayer` (Layer 3)
+### Module 3.3 — `FieldLayer` (Layer 3) ✅ (completed 2026-05-10)
 
 Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
@@ -516,7 +516,9 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 3.1.
 
 **Done when:** A drawn polygon shows a translucent fill with a white outline, and clearing the draft removes the layer cleanly.
 
-### Module 3.4 — Geometry feedback (live area + validation hints)
+> ⚠️ DEVIATION: `<FieldLayer />` exposes a single **optional `polygon?: GeoJSON.Polygon | null` prop** instead of two sibling components (`<DraftFieldLayer />` + `<PersistedFieldLayer />`). When the prop is omitted, the component subscribes to `useFieldStore.draftPolygon` (create-field flow). When the prop is provided — including `polygon={null}` — it uses the prop verbatim and ignores the store (analysis screen passing `useField(id).data.geometry`, with `null` while the query is pending). Splitting into two siblings would duplicate the entire MapLibre source/layer/`moveLayer`/style-epoch lifecycle for no payoff; one component with a `undefined` vs `null` distinction keeps the visual contract identical for both consumers and prevents the analysis screen from accidentally leaking draft state. See `FieldLayer.tsx` JSDoc, the `## Why optional polygon prop` section.
+
+### Module 3.4 — Geometry feedback (live area + validation hints) ✅ (completed 2026-05-10)
 
 Depends on: 3.2, 3.3.
 

@@ -81,6 +81,9 @@ importers:
       '@tanstack/react-router':
         specifier: 1.169.2
         version: 1.169.2(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@turf/area':
+        specifier: ^7.3.5
+        version: 7.3.5
       '@turf/turf':
         specifier: ^7.3.5
         version: 7.3.5

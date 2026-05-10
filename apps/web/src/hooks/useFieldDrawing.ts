@@ -79,17 +79,39 @@
  * event, can produce the toast, and clear the now-rejected feature. See
  * the DEVIATION blockquote under Module 3.2 in docs/implementation.md.
  *
- * ## Live area on `change`
+ * ## Live area + validation on `change` (Module 3.4)
  *
  * Each provisional / commit `change` recomputes area from the in-progress
  * polygon (which Terra Draw stores with the closing point already wired,
- * so `@turf/area` returns a sane value) and writes it via
- * `setDraftValidation({ areaHectares, valid: false, errors: [] })`. The
- * polygon itself is **not** written until `finish` — `<FieldLayer />`
+ * so `@turf/area` returns a sane value) and **also** runs the same
+ * `polygonGeoJsonSchema.safeParse` the `finish` handler runs, so the form
+ * (Module 3.5) can render the canonical India-bbox / size hints live as
+ * the user drags vertices around — not just after they double-click to
+ * finish. Three branches:
+ *
+ *   - Parse succeeds → `valid: true`, `errors: []`, area chip lights up.
+ *   - Parse fails with a **structural** issue (`hasStructuralFailure`) →
+ *     `valid: false`, `errors: []`. We deliberately do **not** surface
+ *     structural messages live: an in-progress Terra Draw polygon can
+ *     transiently look "structural" (e.g., one ring vertex still being
+ *     dragged into place) and a flickering "ring not closed" message would
+ *     be noisy. The `finish` handler is the one that toasts + clears for
+ *     structural failures.
+ *   - Parse fails with a **business** issue (bbox / area) →
+ *     `valid: false`, `errors: <human-readable messages>`. These are
+ *     stable across drag ticks and are exactly what the form should show
+ *     inline so the user can fix as they drag.
+ *
+ * In every branch the area is written so the live chip keeps working.
+ *
+ * The polygon itself is **not** written until `finish` — `<FieldLayer />`
  * reads `draftPolygon` from the store and would otherwise paint a
- * half-formed shape on top of Terra Draw's own provisional render. This
- * keeps the live area readout for Module 3.4 working without doubling up
- * the visual.
+ * half-formed shape on top of Terra Draw's own provisional render. The
+ * `finish` handler immediately overwrites these `draftValid`/`draftErrors`
+ * values atomically with `setDraftGeometry` (polygon + validation in one
+ * `set()`) so the brief moment of "validation set, polygon not yet" only
+ * matters to consumers that read validation without polygon — which is
+ * exactly what the form wants for the live readout.
  *
  * ## StrictMode safety
  *
@@ -100,7 +122,6 @@
  * is therefore safe — each pass owns its own `TerraDraw` instance.
  */
 
-import { area } from '@turf/turf';
 import { polygonGeoJsonSchema } from '@viz-crop/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -112,6 +133,7 @@ import {
 } from 'terra-draw';
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter';
 import { useMapContext } from '@/components/map/MapContext';
+import { polygonAreaHectares } from '@/lib/geometry';
 import { useFieldStore } from '@/stores/useFieldStore';
 
 /** Mode names — `setMode('polygon')` enters drawing, `setMode('static')` parks the instance. */
@@ -156,13 +178,6 @@ function pickLatestPolygon(
     }
   }
   return null;
-}
-
-/** Compute polygon area in hectares using the same `@turf/area` (WGS84
- *  spherical-excess) formula the shared schema uses, so the live readout
- *  and the post-finish validation agree to floating-point precision. */
-function areaHectares(geometry: GeoJSON.Polygon): number {
-  return area(geometry) / 10_000;
 }
 
 /** Map zod issues to human-readable messages for the inline error list.
@@ -248,10 +263,29 @@ export function useFieldDrawing(): UseFieldDrawingResult {
       const polygon = readLatestPolygon();
       if (!polygon) return;
 
-      // Live area readout for the in-progress polygon. We don't write the
-      // polygon itself yet — see the "Live area on `change`" header note.
-      const ha = areaHectares(polygon.geometry);
-      setDraftValidation({ areaHectares: ha, valid: false, errors: [] });
+      // Live area + validation readout for the in-progress polygon. We
+      // don't write the polygon itself yet — see the "Live area +
+      // validation on `change`" header note.
+      const ha = polygonAreaHectares(polygon.geometry);
+      const result = polygonGeoJsonSchema.safeParse(polygon.geometry);
+
+      if (result.success) {
+        setDraftValidation({ areaHectares: ha, valid: true, errors: [] });
+        return;
+      }
+
+      // Suppress structural messages live (they're transient mid-drag);
+      // the `finish` handler owns the toast-and-clear UX for those.
+      if (hasStructuralFailure(result.error.issues)) {
+        setDraftValidation({ areaHectares: ha, valid: false, errors: [] });
+        return;
+      }
+
+      setDraftValidation({
+        areaHectares: ha,
+        valid: false,
+        errors: issueMessages(result.error.issues),
+      });
     };
 
     const handleFinish = (id: string | number) => {
@@ -291,7 +325,7 @@ export function useFieldDrawing(): UseFieldDrawingResult {
       }
 
       const result = polygonGeoJsonSchema.safeParse(polygonFeature.geometry);
-      const ha = areaHectares(polygonFeature.geometry);
+      const ha = polygonAreaHectares(polygonFeature.geometry);
 
       if (!result.success) {
         if (hasStructuralFailure(result.error.issues)) {
