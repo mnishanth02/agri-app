@@ -606,7 +606,7 @@ Depends on: 4.1, 1.2.
 
 > ⚠️ PENDING: The "scratch script against an existing field row" smoke is deferred to Module 4.6 where `warmField` is wired into `POST /api/fields` and end-to-end verification can happen as part of normal field creation. The unit-test side of Done-when is satisfied (10 tests covering reuse, happy path, non-2xx, transport failure, missing/non-hex/uppercase `cropper_ref`, invalid JSON 200, DB UPDATE failure, and the no-key-in-logs canary).
 
-### Module 4.3 — Search wrapper
+### Module 4.3 — Search wrapper ✅ (completed 2026-05-10)
 
 Depends on: 4.1.
 
@@ -617,6 +617,8 @@ Depends on: 4.1.
    - Treats `tmsTemplate` as stored metadata only. The Search docs may return `render.eosda.com` templates; app tiles must still go through our authenticated Render proxy built from `viewId`.
 
 **Done when:** A unit test mocks `fetch` and asserts the mapping.
+
+> ⚠️ PENDING: The optional `RUN_EOSDA_LIVE=1` Search smoke is rolled forward to Module 4.5 where `warmField` exercises Search end-to-end alongside Cropper — landing a one-off live caller now would be deleted again in 4.5. Unit coverage (18 tests covering body shape, all 6 field renames, empty results, results=null/object, per-element validation for missing/wrong-typed fields with index reporting, error propagation, log forwarding, and the no-key-in-logs canary) already pins the wrapper contract.
 
 ### Module 4.4 — Scene cache service
 
@@ -958,7 +960,7 @@ Depends on: 8.1, 8.2.
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
-| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.3 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Land it once the Search wrapper exists in 4.3 — it has no value before there's a typed wrapper to invoke. |
+| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.5 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Now that the typed wrapper (Module 4.3) exists, fold the live smoke into Module 4.5 where `warmField` exercises Search alongside Cropper end-to-end — landing a one-off live caller now would be deleted again in 4.5. |
 | 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Module 4.6 | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. Folding this into Module 4.6's "create field → warm-up runs" smoke avoids a one-off script that has to be deleted later; unit coverage (10 tests) already pins the contract. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
