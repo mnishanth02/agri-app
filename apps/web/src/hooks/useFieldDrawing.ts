@@ -258,10 +258,12 @@ export function useFieldDrawing(): UseFieldDrawingResult {
       // `styling` updates are pure rendering churn — they fire on hover and
       // do not mean the geometry changed. Skip to avoid pointless re-renders.
       if (type === 'styling') return;
-      if (type === 'delete') return;
 
       const polygon = readLatestPolygon();
-      if (!polygon) return;
+      if (!polygon) {
+        clearDraft();
+        return;
+      }
 
       // Live area + validation readout for the in-progress polygon. We
       // don't write the polygon itself yet — see the "Live area +
@@ -383,6 +385,10 @@ export function useFieldDrawing(): UseFieldDrawingResult {
         draw.stop();
       } catch (err) {
         console.warn('[useFieldDrawing] draw.stop() failed during cleanup', err);
+      }
+
+      if (useFieldStore.getState().draftPolygon === null) {
+        clearDraft();
       }
 
       drawRef.current = null;

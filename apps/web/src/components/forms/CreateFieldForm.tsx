@@ -229,6 +229,7 @@ export function CreateFieldForm() {
       await navigate({ to: '/fields/$id', params: { id: createdId } });
       clearDraft();
     } catch {
+      clearDraft();
       form.setError('root', {
         message: 'Field was created, but navigation failed. Please open it from the dashboard.',
       });
