@@ -453,7 +453,7 @@ Depends on: 2.4.
 
 ---
 
-## Phase 3 — Drawing + Layer 3 + create form
+## Phase 3 — Drawing + Layer 3 + create form ✅ (completed 2026-05-10)
 
 **Goal:** A signed-in user can draw a polygon on the create-map, fill out the field form, and successfully create a field that appears on the dashboard.
 
@@ -527,7 +527,7 @@ Depends on: 3.2, 3.3.
 
 **Done when:** As the user draws, a small chip near the form shows the current area in hectares.
 
-### Module 3.5 — `CreateFieldForm`
+### Module 3.5 — `CreateFieldForm` ✅ (completed 2026-05-10)
 
 Depends on: 1.4 (shared schemas), 3.1, 0.5 (shadcn `Form`).
 
@@ -546,7 +546,9 @@ Depends on: 1.4 (shared schemas), 3.1, 0.5 (shadcn `Form`).
 - Invalid form or missing polygon keeps the button disabled.
 - Server-side validation errors are displayed.
 
-### Module 3.6 — Wire `CreateLayout` form column
+> ⚠️ DEVIATION: The form's `zodResolver` is given a slightly wider local `formSchema` (optional metadata fields are `z.string().max(120).optional()`) instead of `createFieldDto.omit({ geometry: true })` literally. Reason: `createFieldDto` declares `farmerName`/`village`/`district`/`state` as `metadataString.optional()`, which permits `undefined` but **rejects `''`**. With `mode: 'onChange'` and `defaultValues: { farmerName: '' }`, the canonical resolver would mark the form invalid the moment the user focused and blurred (or erased a typo from) any optional field, leaving the submit button stuck disabled. The wider local schema lets `''` pass live validation; on submit, empty optional metadata is normalized to `undefined`, the assembled payload is re-validated against the canonical `createFieldDto.safeParse(...)` for a final contract guard, and only then is `useCreateField().mutateAsync(...)` called. Net effect: identical wire contract, better keystroke-time UX. Documented at the top of `apps/web/src/components/forms/CreateFieldForm.tsx`.
+
+### Module 3.6 — Wire `CreateLayout` form column ✅ (completed 2026-05-10)
 
 Depends on: 2.5, 3.5.
 
@@ -556,7 +558,7 @@ Depends on: 2.5, 3.5.
 
 **Done when:** The full create flow is usable end-to-end on `/fields/new`.
 
-### Phase 3 exit criteria
+### Phase 3 exit criteria ✅ (completed 2026-05-10)
 
 - A signed-in user draws a polygon, fills the form, and lands on `/fields/:id` (which can still be a placeholder).
 - The dashboard reflects the new field with the correct area.
