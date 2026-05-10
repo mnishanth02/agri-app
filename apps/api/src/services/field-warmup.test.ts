@@ -554,6 +554,8 @@ describe('warmField — defensive cropper rejection branch', () => {
   it('does not wait for a cropper promise that never settles before upserting the scene', async () => {
     const { fieldId, db, cleanup } = await seedField();
     try {
+      // Intentional: a bare pending Promise does not keep Node's event loop alive,
+      // and it models a Cropper request that never settles.
       const neverSettlingCropper = new Promise<string | null>(() => {});
       vi.mocked(getOrCreateCropperRef).mockReturnValueOnce(neverSettlingCropper);
       const scene = makeSearchScene({ sceneID: 'S2B_hung_cropper', view_id: 'view/hung/01' });
