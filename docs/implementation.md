@@ -591,7 +591,7 @@ Depends on: 0.4, 0.8.
 
 > ⚠️ PENDING: `RUN_EOSDA_LIVE=1` smoke deferred to Module 4.3 where the Search wrapper exists to be smoke-tested. The unit-test side of Done-when is satisfied (20 tests covering request construction, error mapping, query-auth fallback, key-smuggling defenses, and logging-leak canaries).
 
-### Module 4.2 — Cropper-ref creation/reuse
+### Module 4.2 — Cropper-ref creation/reuse ✅ (completed 2026-05-10)
 
 Depends on: 4.1, 1.2.
 
@@ -603,6 +603,8 @@ Depends on: 4.1, 1.2.
 > Schema note: `eosda_cropper_ref` is permanently `TEXT`. The Cropper response is a 32-character hex string; do not migrate to `INTEGER`/`BIGINT` and do not store EOSDA Field Management `field_id` here — that is a different identifier for a different system.
 
 **Done when:** Calling `getOrCreateCropperRef(field)` from a one-off scratch script for an existing field row populates `eosda_cropper_ref` with a 32-char hex hash, and a second call returns the same value without a new EOSDA POST. A unit test with a mocked `fetch` covers the failure path (returns `null`, logs error, leaves column NULL). End-to-end "create field → cropper appears" verification waits until Module 4.6.
+
+> ⚠️ PENDING: The "scratch script against an existing field row" smoke is deferred to Module 4.6 where `warmField` is wired into `POST /api/fields` and end-to-end verification can happen as part of normal field creation. The unit-test side of Done-when is satisfied (10 tests covering reuse, happy path, non-2xx, transport failure, missing/non-hex/uppercase `cropper_ref`, invalid JSON 200, DB UPDATE failure, and the no-key-in-logs canary).
 
 ### Module 4.3 — Search wrapper
 
@@ -957,6 +959,7 @@ Depends on: 8.1, 8.2.
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
 | 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.3 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Land it once the Search wrapper exists in 4.3 — it has no value before there's a typed wrapper to invoke. |
+| 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Module 4.6 | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. Folding this into Module 4.6's "create field → warm-up runs" smoke avoids a one-off script that has to be deleted later; unit coverage (10 tests) already pins the contract. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
 ---
