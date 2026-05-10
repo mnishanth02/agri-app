@@ -569,7 +569,7 @@ Depends on: 2.5, 3.5.
 
 ---
 
-## Phase 4 — EOSDA warm-up service
+## Phase 4 — EOSDA warm-up service ✅ (completed 2026-05-10)
 
 **Goal:** Whenever a field is created, the API kicks off a non-blocking warm-up that (a) creates and persists an EOSDA Render `cropper_ref` for the polygon via the documented `POST /api/render/cropper/` endpoint and (b) discovers the latest available Sentinel-2 scene metadata via Search and upserts that scene into `cached_scenes`. The two requests run independently. The POST response is fast: warm-up is fire-and-forget. Do **not** prefetch six months of imagery, statistics, or tiles during field creation; the timeline is expanded later through the cache-first scenes route.
 
@@ -644,7 +644,7 @@ Depends on: 4.2, 4.3, 4.4.
 
 **Done when:** Calling `warmField(id)` from a scratch script populates the newest available row in `cached_scenes` when EOSDA has data for the polygon, and populates `eosda_cropper_ref` from a successful Cropper POST. If either upstream call fails, the failure is logged with `fieldId` and warm-up exits cleanly without throwing.
 
-### Module 4.6 — Wire `warmField` into `POST /api/fields`
+### Module 4.6 — Wire `warmField` into `POST /api/fields` ✅ (completed 2026-05-10)
 
 Depends on: 1.6, 4.5.
 
@@ -960,8 +960,8 @@ Depends on: 8.1, 8.2.
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape | Phase 4 | Docs imply `200 OK` with `meta.found: 0` and `results: []`; a single live POST against a polygon outside Sentinel-2 coverage confirms it. Not blocking. |
-| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Module 4.6 | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Module 4.5 (`warmField`) is fully covered by mocked-fetch + real-DB integration tests; the natural place for a live end-to-end smoke is Module 4.6 where `warmField` runs in the POST /api/fields flow against the real EOSDA backend. |
-| 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Module 4.6 | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. Folding this into Module 4.6's "create field → warm-up runs" smoke avoids a one-off script that has to be deleted later; unit coverage (10 tests) already pins the contract. |
+| 4.3 | `RUN_EOSDA_LIVE=1` smoke test for EOSDA HTTP client | Phase 4 close-out / first env with creds | Module 4.1 spec includes an optional live smoke that hits Search with a tiny `limit`. Module 4.5 (`warmField`) is fully covered by mocked-fetch + real-DB integration tests; Module 4.6 wires `warmField` into POST /api/fields, but the agent environment has no live EOSDA quota to validate end-to-end. Park until the first dev/staging env with usable EOSDA creds runs the route. |
+| 4.6 | Scratch-script smoke for `getOrCreateCropperRef` against an existing field row | Phase 4 close-out / first env with creds | Module 4.2 Done-when calls for a one-off scratch run that POSTs to Cropper, persists `eosda_cropper_ref`, and proves a second call short-circuits. With Module 4.6 wired, normal field creation now exercises this path; folding the verification into the first-env-with-creds run avoids a one-off script. Unit coverage (10 tests) already pins the contract. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 
 ---

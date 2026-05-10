@@ -7,6 +7,7 @@ import { type ZodError, z } from 'zod';
 import { geometryFromGeoJson, geometryToGeoJson } from '../db/geometry.js';
 import { fields } from '../db/schema.js';
 import { requireUser } from '../plugins/auth.js';
+import { warmField } from '../services/field-warmup.js';
 
 /**
  * Reusable projection that mirrors the columns of `fieldDto` exactly, with
@@ -145,8 +146,13 @@ export async function fieldRoutes(app: FastifyInstance): Promise<void> {
       throw app.httpErrors.internalServerError('Insert returned no row');
     }
 
-    // TODO Phase 4 (4.6): void warmField(row.id) — kick off EOSDA cropper
-    // task + initial scene/NDVI cache warm-up. Non-blocking on the response.
+    // Module 4.6: kick off EOSDA cropper task + initial scene/NDVI cache
+    // warm-up. Fire-and-forget; the .catch ensures any rejection that escapes
+    // warmField's internal handlers is logged with `{ fieldId, err }` rather
+    // than becoming an unhandledRejection that crashes the server.
+    void warmField(row.id, { db: app.db, log: request.log }).catch((err) => {
+      request.log.error({ err, fieldId: row.id }, 'warm failed');
+    });
 
     reply.code(201);
     return { id: row.id };
