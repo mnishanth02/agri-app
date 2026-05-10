@@ -40,7 +40,7 @@
  *      layers, then calls `moveLayer` to push them above any basemap label
  *      symbols. Cleanup removes layers before the source. Re-runs only when
  *      the style is replaced.
- *   2. **Data effect** — deps `[map, isStyleReady, styleEpoch, polygon]`.
+ *   2. **Data effect** — deps `[map, isStyleReady, effectivePolygon]`.
  *      Looks up the (already-added) source and calls `setData(...)` with a
  *      fresh FeatureCollection. Re-runs on every polygon change.
  *
@@ -162,11 +162,11 @@ export type FieldLayerProps = {
 
 export function FieldLayer({ polygon }: FieldLayerProps) {
   const { map, isStyleReady, styleEpoch } = useMapContext();
-  const draftPolygon = useFieldStore((s) => s.draftPolygon);
   // `polygon === undefined` (prop omitted) → fall back to the store. Any
   // explicit value, including `null`, wins over the draft so the analysis
-  // screen can pass `field.geometry` without leaking draft state.
-  const effectivePolygon = polygon !== undefined ? polygon : draftPolygon;
+  // screen can pass `field.geometry` without leaking draft state or
+  // re-rendering on draft updates.
+  const effectivePolygon = useFieldStore((s) => (polygon !== undefined ? polygon : s.draftPolygon));
 
   // Lifecycle effect: add the source + layers once per style generation,
   // remove them on cleanup. Re-runs when the style is swapped (styleEpoch).
