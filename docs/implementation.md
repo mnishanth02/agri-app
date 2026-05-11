@@ -736,6 +736,25 @@ Depends on: 5.1.
 
 **Done when:** Visual regression vs reference screenshot lands the overlays in the correct positions; all stubs render without console errors.
 
+### Module 5.6 — UI/UX redesign: edge-anchored chrome ✅ (completed 2026-05-11)
+
+Depends on: 5.1 – 5.5. Driver: `docs/ui-ux-redesign.md`.
+
+The first-cut analysis screen used a centered "dodge" pattern (timeline + cluster + toast all repositioned with `lg:translate-x-*` when the sidebar pane opened). Module 5.6 replaces that with **edge-anchored chrome**: every chip lives in a corner or along an edge and never repositions, while persistent overlays escalate to shadcn `Sheet`s on `<md` so they stop fighting `LayerControlCluster` / `DateTimeline` for space on phones.
+
+1. Centralized visual tokens in `lib/tokens.ts` (`CHIP_BASE`, `CHIP_FOCUS`); reused across every chip + overlay. Added SSR-safe `hooks/useMediaQuery.ts` and a `components/ui/popover.tsx` primitive (wraps `radix-ui` Popover).
+2. **TopBar** trimmed to back-arrow · pin · name · area (10 × clamp width). "Get overview" CTA and "All fields ▾" hoisted out into standalone right-aligned chips `GetOverviewButton` + `FieldSwitcherChip` rendered by `AnalysisLayout`.
+3. **RightSidebar** unchanged on `md+` (rail 64 → pane 364 inline). On `<md` only the rail stays inline; the pane escalates to `<Sheet side="right">`. `PaneBody` extracted with `inSheet` prop so chip chrome is suppressed inside the sheet.
+4. **BottomBar** rebuilt as a bottom-left tray: collapsed 280 × 36 pill (tab triggers + chevron); expanded 360 × 320 panel on `md+` with `grid-cols-1 md:grid-cols-2` cards. On `<md` the expanded body opens as `<Sheet side="bottom">`.
+5. **LayerControlCluster** (new) consolidates `SourceChip` · `IndexDropdown` (replaces `IndexSwitcher`) · `OpacityPopover` (replaces always-visible `OpacitySlider`) · palette stub · download · collapse chevron into one bottom-right chip. On `<md` collapses to a `LayersIcon` puck opening a popover with the same controls. **Deleted:** `AnalysisToolbar.tsx`, `SourceSwitcher.tsx`, `IndexSwitcher.tsx`, `OpacitySlider.tsx`.
+6. **DateTimeline** rebuilt: horizontal scrollable row of 36 × 36 date chips with `ChevronLeft/Right` scroll arrows, "Next: …" hint pill, anchored `bottom-20` always (no longer repositions when the tray expands). `role="toolbar"` + `aria-orientation="horizontal"` so it announces correctly.
+7. **CloudHiddenToast** moved to `bottom-16 left-3`, shifts up to `bottom-[22rem]` when the tray expands; auto-dismisses after 8 s.
+8. **ScaleBar** repinned to `top-3 right-3` and hidden below `lg` (read-out matters on desktop, not phones).
+9. **AnalysisLayout** now positions chrome via `<div className="pointer-events-none absolute inset-0">` with edge-anchored child slots (`top-3 left-3`, `top-3 right-20`, `top-3 right-3 bottom-3`, `bottom-3 left-3`). `FitToFieldBounds` padding updated to `{ top: 64, right: 88, bottom: 96, left: 88 }`. Added a one-shot `hasInitialisedRef`-gated effect that closes any open sidebar pane on first mount when the viewport is `<lg` (responsive default; doesn't override later user toggles).
+10. Audits: `motion-safe:transition-transform` purged repo-wide; no leaks of `activeSidebarItem` truthiness outside `RightSidebar` + the layout init effect; `pnpm biome check apps/web/src` and `pnpm --filter @viz-crop/web typecheck` both clean.
+
+**Done when:** every chip uses `CHIP_BASE`/`CHIP_FOCUS`; the centered overlays no longer reposition when the sidebar pane opens; `<md` renders without overlay collisions because persistent overlays escalate to `Sheet`s; typecheck + biome are clean.
+
 ### Phase 5 exit criteria
 
 - `/fields/:id` renders the full layout with the polygon visible.

@@ -1,57 +1,17 @@
 /**
- * Module 5.4 — `BottomBar`.
+ * Module 5.6 — `BottomBar` (bottom-left tray).
  *
- * Floating bottom-centered chrome for the analysis screen (`/fields/$id`).
- * Implements the anatomy listed in `docs/plan.md` § 2 ("Bottom bar"):
- * three tab shells — Crop info, Chart, Activities — that share a single
- * collapsible ~280 px panel.
+ * Anchored at `bottom-3 left-3` by `AnalysisLayout`. Collapsed: 36 px-tall
+ * pill with three tab triggers — `Crop info · Chart · Activities`.
+ * Expanded: 320 × 320 panel on `md+`; on `<md` the expanded body
+ * escalates to a shadcn bottom `Sheet` (see `docs/ui-ux-redesign.md`
+ * § D2 + § R.B.6 + § R.C.2).
  *
- * ## Visual language
+ * Width policy:
+ * - collapsed: `w-[280px]`
+ * - expanded (`md+`): `w-[360px]`
  *
- * Same dark frosted aesthetic as `<TopBar>` and `<RightSidebar>`:
- * `bg-black/70` + `backdrop-blur-md saturate-150` + a faint white
- * hairline border. Fixed `640 px` width that shrinks on narrow viewports
- * via `max-w-[calc(100vw-1.5rem)]` so the bar never collides with the
- * chrome margin enforced by `AnalysisLayout`.
- *
- * ## State model
- *
- * Active tab lives in `useUiStore.bottomBarTab`:
- *
- * - `null` → collapsed, only the tab-strip header is visible.
- * - any `BottomBarTab` → expanded with that tab's content panel below.
- *
- * The header always renders the three Radix tab triggers plus a chevron
- * collapse/expand toggle. Clicking a tab trigger sets that tab and, if
- * collapsed, expands the panel. Clicking the chevron toggles between
- * collapsed and the **last-active** tab (defaulting to `'cropInfo'`),
- * so users don't lose their place when they re-open the bar.
- *
- * ## Accessibility
- *
- * - Tab semantics come from Radix `<Tabs>` / `<TabsTrigger>` /
- *   `<TabsContent>` (`role="tablist"`, `aria-selected`, arrow-key
- *   navigation, `aria-controls` linking).
- * - The chevron button announces its action with a state-aware
- *   `aria-label` ("Collapse bottom bar" / "Expand bottom bar") and
- *   mirrors the panel's open state via `aria-expanded`.
- * - Pressing Escape inside the expanded panel collapses it; focus is
- *   then restored to the chevron toggle so keyboard users don't lose
- *   their place when the panel unmounts.
- * - The chart-tab and activities-tab icons are decorative
- *   (`aria-hidden="true"`); the surrounding text carries the meaning.
- *
- * ## Stub controls
- *
- * Two of the three tabs are explicit placeholders per the v2 spec:
- *
- * - **Chart**: copy + `<LineChartIcon>` until Phase 7 wires the recharts
- *   line over cached scenes.
- * - **Activities**: empty-state copy + a disabled "Add activity" button
- *   so the affordance is visible without doing anything yet.
- *
- * Wiring lives outside this file — `BottomBar` is purely presentational
- * and receives the resolved `field: FieldDto` from `AnalysisLayout`.
+ * State unchanged: `useUiStore.bottomBarTab`.
  */
 
 import type { FieldDto } from '@viz-crop/shared';
@@ -71,8 +31,11 @@ import {
   useRef,
 } from 'react';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { type BottomBarTab, useUiStore } from '@/stores/useUiStore';
 
@@ -88,18 +51,13 @@ const SOWING_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 });
 
 const TABS: ReadonlyArray<{ value: BottomBarTab; label: string }> = [
-  { value: 'cropInfo', label: 'Crop info' },
+  { value: 'cropInfo', label: 'Crop' },
   { value: 'chart', label: 'Chart' },
   { value: 'activities', label: 'Activities' },
 ];
 
-/**
- * Tab to expand to when the chevron is clicked from the collapsed state
- * for the very first time (before the user has touched any tab).
- */
 const DEFAULT_TAB: BottomBarTab = 'cropInfo';
 
-/** Shared card styling used by every Crop info subpanel. */
 const CARD_CLASS = 'rounded-md border border-white/10 bg-white/5 p-3 text-sm';
 
 export type BottomBarProps = {
@@ -109,11 +67,8 @@ export type BottomBarProps = {
 export function BottomBar({ field }: BottomBarProps) {
   const bottomBarTab = useUiStore((s) => s.bottomBarTab);
   const setBottomBarTab = useUiStore((s) => s.setBottomBarTab);
+  const isMd = useMediaQuery('(min-width: 768px)');
 
-  // Remember the most recent non-null tab so the chevron can restore it
-  // after a collapse → expand cycle. Seeded from the store's initial
-  // value so the very first chevron click after `bottomBarTab` was
-  // hand-cleared still lands on a sensible tab.
   const lastActiveTabRef = useRef<BottomBarTab>(bottomBarTab ?? DEFAULT_TAB);
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -125,9 +80,6 @@ export function BottomBar({ field }: BottomBarProps) {
 
   const handleTabChange = useCallback(
     (value: string) => {
-      // Radix narrows `value` to `string`; the underlying triggers are
-      // restricted to the `BottomBarTab` union by the static `TABS`
-      // array, so the cast is safe.
       setBottomBarTab(value as BottomBarTab);
     },
     [setBottomBarTab],
@@ -135,8 +87,6 @@ export function BottomBar({ field }: BottomBarProps) {
 
   const handleCollapse = useCallback(() => {
     setBottomBarTab(null);
-    // Wait a frame so the panel has unmounted before stealing focus —
-    // otherwise focus-within styles flash on the disappearing panel.
     requestAnimationFrame(() => {
       toggleButtonRef.current?.focus();
     });
@@ -150,10 +100,6 @@ export function BottomBar({ field }: BottomBarProps) {
 
   const handleRootKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
-      // Escape collapses from anywhere inside the bar (header tab
-      // triggers, panel content, chevron), not just the panel — so
-      // keyboard users can exit without first having to Tab into the
-      // panel body.
       if (event.key === 'Escape' && isExpanded) {
         event.stopPropagation();
         handleCollapse();
@@ -162,37 +108,27 @@ export function BottomBar({ field }: BottomBarProps) {
     [handleCollapse, isExpanded],
   );
 
+  const trayWidth = isExpanded && isMd ? 'w-[360px]' : 'w-[280px]';
+
   return (
     <section
-      aria-label="Bottom bar"
+      aria-label="Field details"
       onKeyDown={handleRootKeyDown}
-      className="z-10 w-[640px] max-w-[calc(100vw-1.5rem)] touch-manipulation overflow-hidden rounded-md border border-white/10 bg-black/70 text-white shadow-lg backdrop-blur-md saturate-150"
+      className={cn(CHIP_BASE, 'z-10 touch-manipulation overflow-hidden', trayWidth)}
     >
-      <Tabs
-        // Radix Tabs accepts an empty string when no trigger should look
-        // active — this is exactly the collapsed state.
-        value={bottomBarTab ?? ''}
-        onValueChange={handleTabChange}
-        className="gap-0"
-      >
-        <div className="flex h-12 items-center justify-between gap-2 px-2">
-          <TabsList variant="line" className="h-9 gap-1 bg-transparent p-0">
+      <Tabs value={bottomBarTab ?? ''} onValueChange={handleTabChange} className="gap-0">
+        <div className="flex h-9 items-center justify-between gap-1 px-1.5">
+          <TabsList variant="line" className="h-7 gap-0.5 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
                 className={cn(
-                  // Override the default `flex-1` so triggers stay
-                  // compact instead of stretching across the header.
-                  'h-9 flex-none rounded-md px-3 text-sm font-medium text-white/70 transition-colors',
+                  'h-7 flex-none rounded-md px-2 text-xs font-medium text-white/70 transition-colors',
                   'hover:bg-white/5 hover:text-white',
                   'data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none',
                   'dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-white/15 dark:data-[state=active]:text-white',
-                  // Match the focus-ring treatment used by TopBar / RightSidebar
-                  // for cohesion across the analysis chrome.
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70',
-                  // Suppress the underline indicator baked into the
-                  // `line` variant — we use background fill instead.
+                  CHIP_FOCUS,
                   'after:hidden',
                 )}
               >
@@ -209,7 +145,10 @@ export function BottomBar({ field }: BottomBarProps) {
                 aria-label={isExpanded ? 'Collapse bottom bar' : 'Expand bottom bar'}
                 aria-expanded={isExpanded}
                 onClick={handleTogglePress}
-                className="inline-flex size-9 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
+                className={cn(
+                  'inline-flex size-7 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
+                  CHIP_FOCUS,
+                )}
               >
                 {isExpanded ? (
                   <ChevronDownIcon aria-hidden="true" className="size-4" />
@@ -222,35 +161,76 @@ export function BottomBar({ field }: BottomBarProps) {
           </Tooltip>
         </div>
 
-        {isExpanded ? (
+        {/* md+: inline body below the header */}
+        {isMd && isExpanded ? (
           <div
             className={cn(
               'h-[280px] overflow-y-auto overscroll-contain border-white/10 border-t p-3',
               'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200',
             )}
           >
-            <TabsContent value="cropInfo" className="mt-0 outline-none">
-              <CropInfoTab field={field} />
-            </TabsContent>
-            <TabsContent value="chart" className="mt-0 outline-none">
-              <ChartTab />
-            </TabsContent>
-            <TabsContent value="activities" className="mt-0 outline-none">
-              <ActivitiesTab />
-            </TabsContent>
+            <BottomBarBody field={field} />
           </div>
         ) : null}
       </Tabs>
+
+      {/* <md: expanded body lives in a bottom Sheet so it doesn't fight
+          the LayerControlCluster / DateTimeline for space on phones. */}
+      {!isMd ? (
+        <Sheet
+          open={isExpanded}
+          onOpenChange={(open) => {
+            if (!open) handleCollapse();
+          }}
+        >
+          <SheetContent
+            side="bottom"
+            className="max-h-[70vh] gap-3 overflow-y-auto border-white/10 bg-black/90 p-4 text-white backdrop-blur-md"
+          >
+            <Tabs value={bottomBarTab ?? ''} onValueChange={handleTabChange} className="gap-3">
+              <TabsList variant="line" className="h-8 gap-1 bg-transparent p-0">
+                {TABS.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={cn(
+                      'h-8 flex-none rounded-md px-3 text-sm font-medium text-white/70 transition-colors',
+                      'hover:bg-white/5 hover:text-white',
+                      'data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none',
+                      'dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-white/15 dark:data-[state=active]:text-white',
+                      CHIP_FOCUS,
+                      'after:hidden',
+                    )}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              <BottomBarBody field={field} />
+            </Tabs>
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </section>
   );
 }
 
-/**
- * Crop info tab body. Lays out four cards in a horizontal row on `md+`:
- * a real "Crop rotation" panel (current season + crop + sowing date +
- * area pulled from the field metadata) followed by three Phase-7
- * placeholders (growth stages, current risks, sown-area detection).
- */
+function BottomBarBody({ field }: { field: FieldDto }) {
+  return (
+    <>
+      <TabsContent value="cropInfo" className="mt-0 outline-none">
+        <CropInfoTab field={field} />
+      </TabsContent>
+      <TabsContent value="chart" className="mt-0 outline-none">
+        <ChartTab />
+      </TabsContent>
+      <TabsContent value="activities" className="mt-0 outline-none">
+        <ActivitiesTab />
+      </TabsContent>
+    </>
+  );
+}
+
 function CropInfoTab({ field }: { field: FieldDto }) {
   const rotationHeadingId = useId();
   const sowingDateLabel = field.sowingDate
@@ -258,13 +238,11 @@ function CropInfoTab({ field }: { field: FieldDto }) {
     : '—';
   const areaLabel =
     field.areaHectares !== null ? `${HECTARES_FORMATTER.format(field.areaHectares)} ha` : '—';
-  // Trim + fall back to em-dash so blank or whitespace-only values from
-  // the API don't render as empty cells.
   const cropLabel = field.cropType?.trim() || '—';
   const seasonLabel = field.season?.trim() || '—';
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <article className={CARD_CLASS} aria-labelledby={rotationHeadingId}>
         <h3
           id={rotationHeadingId}
@@ -314,8 +292,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function PlaceholderCard({ title, children }: { title: string; children: ReactNode }) {
-  // Dashed border + dimmer surface marks placeholder cards as visually
-  // distinct from the real "Crop rotation" data card next to them.
   return (
     <article className={cn(CARD_CLASS, 'border-dashed bg-white/[0.03]')}>
       <h3 className="font-semibold text-white text-xs uppercase tracking-wide">{title}</h3>
@@ -326,7 +302,7 @@ function PlaceholderCard({ title, children }: { title: string; children: ReactNo
 
 function ChartTab() {
   return (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 text-center">
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
       <LineChartIcon aria-hidden="true" className="size-7 text-white/40" />
       <p className="text-sm text-white/85">NDVI trend chart — coming soon.</p>
       <p className="text-white/55 text-xs">Mean index across all cached scenes will plot here.</p>
@@ -336,16 +312,12 @@ function ChartTab() {
 
 function ActivitiesTab() {
   return (
-    <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 text-center">
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-center">
       <ClipboardListIcon aria-hidden="true" className="size-7 text-white/40" />
       <p className="text-sm text-white/85">No activities yet.</p>
       <p className="text-white/55 text-xs">Field operations you log will appear here.</p>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* `aria-disabled` (instead of native `disabled`) keeps the
-            button reachable by Tab + screen readers; the click handler
-            no-ops via `preventDefault`. Same pattern as TopBar's
-            "Get overview" CTA. */}
           <Button
             type="button"
             size="sm"

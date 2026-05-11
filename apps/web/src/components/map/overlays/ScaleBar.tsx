@@ -1,25 +1,21 @@
 /**
- * Module 5.5 — `ScaleBar`.
+ * Module 5.6 — `ScaleBar`.
  *
  * Wraps MapLibre's native `ScaleControl` and mounts its DOM into our own
- * frosted chrome at the top-right of the map. We do not call
- * `map.addControl(...)` — that places the control in MapLibre's own corner
- * stack which conflicts with the absolute positioning of the rest of the
- * analysis chrome. Instead we instantiate the control, call `onAdd(map)`
- * to obtain the live element (which is already wired to `'move'`/`'zoom'`
- * events internally) and append it to a positioning div.
- *
- * Cleanup tears down the listeners via `onRemove()`.
+ * frosted chrome. Pinned to `top-14 right-20` so it sits below the
+ * `GetOverviewButton` / `FieldSwitcherChip` row and to the left of the
+ * `RightSidebar` rail (which lives at `right-3`); hidden below `lg` —
+ * the scale read-out is useful on desktop but not critical at phone
+ * widths (see `docs/ui-ux-redesign.md` § R.C.4).
  */
 
 import { ScaleControl } from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { useMapContext } from '@/components/map/MapContext';
+import { CHIP_BASE } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
-import { useUiStore } from '@/stores/useUiStore';
 
 export function ScaleBar() {
-  const sidebarPaneOpen = useUiStore((s) => s.activeSidebarItem !== null);
   const { map, isReady } = useMapContext();
   const slotRef = useRef<HTMLDivElement>(null);
 
@@ -42,13 +38,8 @@ export function ScaleBar() {
     <div
       ref={slotRef}
       className={cn(
-        // Base position pins the bar against the right edge of the rail
-        // when the sidebar is collapsed; when the pane is open we slide
-        // it further left so it doesn't paint over the pane content.
-        'pointer-events-none absolute top-3 right-20 inline-flex h-9 items-center rounded-md',
-        'border border-white/10 bg-black/70 px-2 pb-1.5 text-white shadow-lg backdrop-blur-md saturate-150',
-        'motion-safe:transition-[right] motion-safe:duration-200',
-        sidebarPaneOpen && 'lg:right-[25rem]',
+        CHIP_BASE,
+        'pointer-events-none absolute top-14 right-20 hidden h-9 items-center px-2 pb-1.5 lg:inline-flex',
         '[&_.maplibregl-ctrl-scale]:!border-white/60',
         '[&_.maplibregl-ctrl-scale]:!border-t-0',
         '[&_.maplibregl-ctrl-scale]:!bg-transparent',

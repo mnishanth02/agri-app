@@ -1,68 +1,14 @@
 /**
- * Module 5.3 — `RightSidebar`.
+ * Module 5.6 — `RightSidebar`.
  *
  * Persistent right-edge chrome on the analysis screen (`/fields/$id`).
- * Implements the anatomy listed in `docs/plan.md` § 2 ("Right sidebar"):
- * a ~64 px collapsed icon rail and a ~300 px expanded pane.
+ * Always renders the 64 px collapsed icon rail; the expanded pane sits
+ * inline to the left of the rail on `md+` and escalates to a shadcn
+ * bottom-right `Sheet` on `<md` so the persistent overlay stops fighting
+ * for space on phones (see `docs/ui-ux-redesign.md` § R.C.1).
  *
- * ## Layout
- *
- * The component is a single anchored container that renders **two
- * adjacent surfaces** — the rail (always visible, on the right edge)
- * and the pane (slides out to the **left** of the rail when an item is
- * active). Both surfaces share the dark frosted aesthetic established
- * by `<TopBar>` (`bg-black/70` + `backdrop-blur` + a faint white
- * hairline). Together they read as one piece of chrome whose width
- * grows from 64 px to ~364 px when expanded.
- *
- * ## State model
- *
- * Active item lives in `useUiStore.activeSidebarItem`:
- *
- * - `null` → collapsed, only the rail is visible.
- * - any `SidebarItem` → expanded with that item's pane.
- *
- * Clicking an icon toggles: if it's already active we collapse, otherwise
- * we switch to it. The store defaults to `'sample'`, so the very first
- * paint already shows the Sample pane open.
- *
- * ## Pane content
- *
- * Only the **Sample** pane renders a real container — Phase 7 fills it
- * with NDVI stats. To make Phase 7 a drop-in fill, the `<section>`
- * wrapper is rendered here with a stable `aria-labelledby` and a
- * comment marker; the placeholder copy lives inside it. Every other
- * item renders a generic "Coming soon" placeholder with the item's
- * own icon, label, and a one-line description so each stub is
- * distinguishable rather than 11 copies of the same screen.
- *
- * ## Accessibility
- *
- * - The rail is a `role="toolbar"` with vertical orientation and a
- *   single Tab stop (roving tabindex). Arrow keys traverse buttons,
- *   Home/End jump to the first/last button, wrapping across the visual
- *   group separator.
- * - Each rail button is a `<button type="button">` with both
- *   `aria-pressed` (toggle semantic — is this item active?) **and**
- *   `aria-expanded` (since the toggle also expands a region pointed at
- *   by `aria-controls`).
- * - Tooltips are suppressed on the active button — its label already
- *   appears in the pane header, and the doubled announcement is noise.
- * - The pane is an `<aside>` with `aria-labelledby` pointing at the
- *   header `<h2>` so the label and the heading don't drift.
- * - Pressing Escape inside the pane closes it; focus is restored to
- *   the originating rail button so keyboard users don't lose their
- *   place.
- * - Tab order in DOM is rail → pane (close button then body), matching
- *   the documented expectation. The pane is rendered *after* the rail
- *   in JSX so source order matches.
- *
- * ## Why not `<Sheet>`
- *
- * shadcn `Sheet` is a modal/drawer pattern (overlay + focus trap), but
- * the right sidebar is **persistent chrome** — it never traps focus and
- * never dims the underlying map. Plain divs + `Tooltip` are the right
- * primitives here.
+ * State model unchanged: `useUiStore.activeSidebarItem` — `null` =
+ * collapsed; any `SidebarItem` = expanded with that item's pane.
  */
 
 import type { FieldDto } from '@viz-crop/shared';
@@ -75,7 +21,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { type SidebarItem, useUiStore } from '@/stores/useUiStore';
 import { getSidebarItem, SIDEBAR_ITEMS, type SidebarItemConfig } from './sidebar-items';
@@ -89,12 +38,10 @@ export type RightSidebarProps = {
 export function RightSidebar({ field }: RightSidebarProps) {
   const activeSidebarItem = useUiStore((s) => s.activeSidebarItem);
   const setActiveSidebarItem = useUiStore((s) => s.setActiveSidebarItem);
+  const isMd = useMediaQuery('(min-width: 768px)');
 
   const activeConfig = activeSidebarItem ? getSidebarItem(activeSidebarItem) : null;
 
-  // Remember which rail button opened the pane so we can return focus
-  // to it on close — keyboard users would otherwise lose their place
-  // when the close button (and its DOM node) unmount.
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
   const railContainerRef = useRef<HTMLDivElement>(null);
 
@@ -102,8 +49,6 @@ export function RightSidebar({ field }: RightSidebarProps) {
     (id: SidebarItem, fromButton: HTMLButtonElement | null) => {
       if (id === activeSidebarItem) {
         setActiveSidebarItem(null);
-        // No focus restore needed — focus is already on the button
-        // that the user just clicked to collapse.
         return;
       }
       lastTriggerRef.current = fromButton;
@@ -114,27 +59,54 @@ export function RightSidebar({ field }: RightSidebarProps) {
 
   const handleClose = useCallback(() => {
     setActiveSidebarItem(null);
-    // Defer to next frame so the pane has unmounted and the rail
-    // button is the natural focus target.
     requestAnimationFrame(() => {
       lastTriggerRef.current?.focus();
     });
   }, [setActiveSidebarItem]);
 
-  return (
-    <div
-      className={cn(
-        'flex h-full',
-        // `transition-[width]` (NOT `transition-all`) keeps the slide
-        // cheap. `motion-safe:` honors `prefers-reduced-motion`.
-        'motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out',
-        activeConfig ? 'w-[364px]' : 'w-16',
-      )}
-    >
-      {activeConfig ? <Pane field={field} config={activeConfig} onClose={handleClose} /> : null}
+  // md+ inline behaviour: rail + pane share one container that grows
+  // from 64 px to 364 px.
+  if (isMd) {
+    return (
+      <div
+        className={cn(
+          'flex h-full',
+          'motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out',
+          activeConfig ? 'w-[364px]' : 'w-16',
+        )}
+      >
+        {activeConfig ? (
+          <PaneBody field={field} config={activeConfig} onClose={handleClose} />
+        ) : null}
 
-      <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
-    </div>
+        <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
+      </div>
+    );
+  }
+
+  // <md: only the rail stays inline; pane escalates to a Sheet.
+  return (
+    <>
+      <div className="flex h-full w-16">
+        <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
+      </div>
+
+      <Sheet
+        open={activeConfig !== null}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="w-[300px] gap-0 border-white/10 bg-black/90 p-0 text-white backdrop-blur-md sm:max-w-[320px]"
+        >
+          {activeConfig ? (
+            <PaneBody field={field} config={activeConfig} onClose={handleClose} inSheet />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
@@ -144,25 +116,13 @@ type RailProps = {
   ref: React.Ref<HTMLDivElement>;
 };
 
-/**
- * Vertical icon column. Renders the two visual groups (`primary` and
- * `secondary`) separated by a hairline. Always 64 px wide.
- *
- * Roving tabindex: only one button is in the Tab order at a time. Arrow
- * keys move focus among the rail buttons; Home/End jump to the ends.
- * Activation (Enter/Space) is the browser default for `<button>`.
- */
 function Rail({ activeId, onSelect, ref }: RailProps) {
   const buttonRefs = useRef<Map<SidebarItem, HTMLButtonElement | null>>(new Map());
 
-  // Currently-focused rail button (for roving tabindex). Defaults to the
-  // active item if any, else the first item.
   const [focusedId, setFocusedId] = useState<SidebarItem>(
     () => activeId ?? (SIDEBAR_ITEMS[0]?.id as SidebarItem),
   );
 
-  // Keep `focusedId` in sync if the active item changes externally
-  // (e.g., URL load) so Tab still lands on a sensible button.
   useEffect(() => {
     if (activeId) setFocusedId(activeId);
   }, [activeId]);
@@ -212,7 +172,10 @@ function Rail({ activeId, onSelect, ref }: RailProps) {
       aria-orientation="vertical"
       aria-label="Field analysis sidebar"
       onKeyDown={handleKeyDown}
-      className="flex h-full w-16 shrink-0 flex-col items-center gap-1 rounded-md border border-white/10 bg-black/70 py-3 text-white shadow-lg backdrop-blur-md saturate-150"
+      className={cn(
+        CHIP_BASE,
+        'flex h-full w-16 shrink-0 flex-col items-center gap-1 overflow-y-auto py-3',
+      )}
     >
       {primary.map((item) => (
         <RailButton
@@ -258,11 +221,6 @@ type RailButtonProps = {
 function RailButton({ item, isActive, isFocused, onSelect, buttonRef }: RailButtonProps) {
   const Icon = item.icon;
 
-  // Suppress tooltip on the active item — its label already appears
-  // in the pane header, so doubling it is noise. We omit the `open`
-  // prop entirely for inactive buttons to keep the default
-  // open-on-hover behaviour (passing `undefined` is rejected by
-  // `exactOptionalPropertyTypes`).
   const tooltipProps = isActive ? { open: false as const } : {};
 
   return (
@@ -278,12 +236,9 @@ function RailButton({ item, isActive, isFocused, onSelect, buttonRef }: RailButt
           tabIndex={isFocused ? 0 : -1}
           onClick={(event) => onSelect(item.id, event.currentTarget)}
           className={cn(
-            // Reserve the 2 px stripe slot via `border-l-[3px]
-            // border-transparent` so the icon stays centred at the
-            // same px in active vs inactive states.
             'relative inline-flex size-11 items-center justify-center rounded-md border-l-[3px] border-transparent text-white/85 transition-colors',
             'hover:bg-white/10 hover:text-white',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70',
+            CHIP_FOCUS,
             isActive && 'border-emerald-300 bg-white/15 text-white',
           )}
         >
@@ -297,19 +252,16 @@ function RailButton({ item, isActive, isFocused, onSelect, buttonRef }: RailButt
   );
 }
 
-type PaneProps = {
+type PaneBodyProps = {
   field: FieldDto;
   config: SidebarItemConfig;
   onClose: () => void;
+  /** When true, the body is hosted inside a `Sheet` so the outer chip
+   *  styles (border/shadow/animation) are suppressed. */
+  inSheet?: boolean;
 };
 
-/**
- * Expanded pane shown to the LEFT of the rail. Header + body. Body
- * branches on the active item id — only `'sample'` renders the
- * Phase 7-ready `<section>` container; everything else renders a
- * "Coming soon" placeholder with the item's own description.
- */
-function Pane({ field, config, onClose }: PaneProps) {
+function PaneBody({ field, config, onClose, inSheet = false }: PaneBodyProps) {
   const headingId = useId();
 
   const handleKeyDown = useCallback(
@@ -328,8 +280,14 @@ function Pane({ field, config, onClose }: PaneProps) {
       aria-labelledby={headingId}
       onKeyDown={handleKeyDown}
       className={cn(
-        'mr-2 flex h-full w-[300px] shrink-0 flex-col overflow-hidden rounded-md border border-white/10 bg-black/70 text-white shadow-lg backdrop-blur-md saturate-150',
-        'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200',
+        'flex h-full flex-col overflow-hidden text-white',
+        inSheet
+          ? 'w-full'
+          : cn(
+              CHIP_BASE,
+              'mr-2 w-[300px] shrink-0',
+              'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200',
+            ),
       )}
     >
       <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-white/10 border-b px-3">
@@ -339,14 +297,19 @@ function Pane({ field, config, onClose }: PaneProps) {
             {config.label}
           </h2>
         </div>
-        <button
-          type="button"
-          aria-label="Close pane"
-          onClick={onClose}
-          className="inline-flex size-7 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
-        >
-          <XIcon aria-hidden="true" className="size-4" />
-        </button>
+        {!inSheet ? (
+          <button
+            type="button"
+            aria-label="Close pane"
+            onClick={onClose}
+            className={cn(
+              'inline-flex size-7 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
+              CHIP_FOCUS,
+            )}
+          >
+            <XIcon aria-hidden="true" className="size-4" />
+          </button>
+        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
@@ -360,13 +323,6 @@ function Pane({ field, config, onClose }: PaneProps) {
   );
 }
 
-/**
- * Sample pane shell. Phase 7 will replace the inner copy with the real
- * NDVI stats (mean / p10 / p90 / median + cloud-confidence line +
- * mini-histogram) per `docs/plan.md` § 2 → "Sample sidebar pane". Keep
- * the outer `<section>` and its `data-pane="sample"` marker so the fill
- * is a true drop-in.
- */
 function SamplePanePlaceholder({ field }: { field: FieldDto }) {
   return (
     <section data-pane="sample" aria-label="NDVI sample stats" className="flex flex-col gap-3">

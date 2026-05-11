@@ -15,6 +15,8 @@
 import { FullscreenControl } from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { useMapContext } from '@/components/map/MapContext';
+import { CHIP_BASE } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 export function FullscreenButton() {
   const { map, isReady } = useMapContext();
@@ -40,18 +42,15 @@ export function FullscreenButton() {
   return (
     <div
       ref={slotRef}
-      className={[
-        // Tightened to ~16 px below the zoom group so the two MapLibre
-        // chrome chips read as a single left-edge rail rather than two
-        // disconnected pills.
-        'pointer-events-auto absolute left-3 top-[calc(50%+52px)] rounded-md',
-        'border border-white/10 bg-black/70 p-1 text-white shadow-lg backdrop-blur-md saturate-150',
+      className={cn(
+        CHIP_BASE,
+        'pointer-events-auto absolute left-3 top-[calc(50%+52px)] p-1',
         '[&_.maplibregl-ctrl-group]:!border-0 [&_.maplibregl-ctrl-group]:!bg-transparent [&_.maplibregl-ctrl-group]:!shadow-none',
         '[&_.maplibregl-ctrl-group_button]:!h-9 [&_.maplibregl-ctrl-group_button]:!w-9',
         '[&_.maplibregl-ctrl-group_button]:!bg-transparent',
         '[&_.maplibregl-ctrl-group_button]:hover:!bg-white/10',
         '[&_.maplibregl-ctrl-icon]:!brightness-0 [&_.maplibregl-ctrl-icon]:!invert',
-      ].join(' ')}
+      )}
     />
   );
 }

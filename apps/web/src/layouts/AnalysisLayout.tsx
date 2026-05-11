@@ -1,46 +1,28 @@
 /**
- * Module 5.1 — `AnalysisLayout`.
+ * Module 5.6 — `AnalysisLayout`.
  *
  * Full-bleed analysis shell for `/fields/$id`: a single MapLibre canvas
  * fills the viewport (minus the auth header), the basemap and persisted
- * field polygon paint on top, and three layout shells — `<TopBar />`,
- * `<RightSidebar />`, `<BottomBar />` — float over the map as absolutely
- * positioned siblings. Matches the screen anatomy described in
- * `docs/plan.md` § 2.
+ * field polygon paint on top, and edge-anchored chrome floats over the
+ * map. Implements the layout described in `docs/ui-ux-redesign.md` § 3.
  *
- * ## Presentational only
+ * ## Edge-anchored chrome
  *
- * The route owns data fetching (`useField(id)`); this layout owns layout.
- * It receives the resolved `field: FieldDto` as a prop and does not call
- * any data hooks. That separation lets the route handle loading /
- * 404-redirect / error states without the layout having to model them.
+ * Top-left: `TopBar` chip · Top-right: `GetOverviewButton` +
+ * `FieldSwitcherChip` · Left middle: `ZoomControls` + `FullscreenButton`
+ * (via `MapOverlays`) · Right edge: `RightSidebar` rail (+ optional
+ * inline pane on md+) · Bottom-centre: `DateTimeline` · Bottom-left:
+ * `BottomBar` tray · Bottom-right: `LayerControlCluster`.
  *
- * ## Sizing
+ * Nothing dodges: opening the right pane never repositions any other
+ * shell. The pane overlays the map; other shells stay put.
  *
- * The auth layout (`routes/_auth/route.tsx`) renders a sticky `h-14`
- * (3.5rem) header above `<Outlet />`, so this layout pins itself to
- * `calc(100dvh - 3.5rem)` — same pattern as `CreateLayout` — so MapLibre
- * gets a deterministic non-zero `clientHeight` at construction time.
+ * ## Responsive default (D3)
  *
- * ## Initial camera
- *
- * Construction-time `center` / `zoom` props on `<MapView>` are snapshotted
- * by `useMapInstance` on first effect run; later prop changes do not
- * re-center the map. We compute the polygon's bbox center as the initial
- * `center` and pick a generous zoom (14) that frames any plot from a
- * fraction of a hectare to a few hundred. Once the map mounts and the
- * polygon paints, `<FitToFieldBounds />` runs `map.fitBounds(...)` once
- * with padding so the polygon sits inside the visible map area, accounting
- * for the chrome overlays. We do this from a child of `<MapView>` so it
- * has access to the `MapContext` — see the JSDoc on `FitToFieldBounds`.
- *
- * ## Chrome positioning
- *
- * The three shell stubs live inside a single `pointer-events-none
- * absolute inset-0` overlay container (per the MapView overlay convention
- * documented in `MapView.tsx` — full-bleed chrome must not shadow
- * MapLibre's pan/zoom handlers). Each shell wraps its visible content in
- * a `pointer-events-auto` container so it remains interactive.
+ * On first mount we collapse `useUiStore.activeSidebarItem` to `null`
+ * when the viewport is `<lg`, so the map is the hero on narrow screens.
+ * The effect is one-shot via `hasInitialisedRef` so it never overrides
+ * a user-driven toggle.
  */
 
 import bbox from '@turf/bbox';
@@ -52,17 +34,12 @@ import { useMapContext } from '@/components/map/MapContext';
 import { MapView } from '@/components/map/MapView';
 import { MapOverlays } from '@/components/map/overlays/MapOverlays';
 import { BottomBar } from '@/components/shell/BottomBar';
+import { FieldSwitcherChip } from '@/components/shell/FieldSwitcherChip';
+import { GetOverviewButton } from '@/components/shell/GetOverviewButton';
 import { RightSidebar } from '@/components/shell/RightSidebar';
 import { TopBar } from '@/components/shell/TopBar';
-import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/useUiStore';
 
-/**
- * Initial zoom used as the construction-time prop for `<MapView>`. The
- * bbox-based `fitBounds` effect below will refine this on mount, so this
- * is purely a sensible fallback for the first few frames before MapLibre
- * is ready.
- */
 const INITIAL_ZOOM = 14;
 
 export type AnalysisLayoutProps = {
@@ -70,21 +47,21 @@ export type AnalysisLayoutProps = {
 };
 
 export function AnalysisLayout({ field }: AnalysisLayoutProps) {
-  // Subscribe to the sidebar pane state so the bottom bar can dodge
-  // left when the right sidebar is expanded — otherwise the centered
-  // bar overlaps the pane on common laptop widths (< ~1392 px).
-  const activeSidebarItem = useUiStore((s) => s.activeSidebarItem);
-  const sidebarPaneOpen = activeSidebarItem !== null;
+  const setActiveSidebarItem = useUiStore((s) => s.setActiveSidebarItem);
+  const hasInitialisedRef = useRef(false);
 
-  // Generate a stable id for the field title heading so the surrounding
-  // section can `aria-labelledby` it. We use `useId()` rather than a
-  // hardcoded string both to satisfy Biome's `useUniqueElementIds`
-  // rule and so the id remains unique if the layout is ever rendered
-  // more than once on the same page.
+  // D3 — one-shot initial paint: collapse the sidebar on narrow viewports
+  // so the map is the hero. After this fires the user owns the state.
+  useEffect(() => {
+    if (hasInitialisedRef.current) return;
+    hasInitialisedRef.current = true;
+    if (typeof window === 'undefined') return;
+    const isNarrow = window.matchMedia('(max-width: 1023px)').matches;
+    if (isNarrow) setActiveSidebarItem(null);
+  }, [setActiveSidebarItem]);
+
   const fieldTitleId = useId();
 
-  // Compute bbox + center once per polygon. `@turf/bbox` returns
-  // `[minX, minY, maxX, maxY]` (lon/lat order, matching MapLibre).
   const { center, bounds } = useMemo(() => {
     const [minX, minY, maxX, maxY] = bbox(field.geometry);
     return {
@@ -103,72 +80,28 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
         <FieldLayer polygon={field.geometry} />
         <FitToFieldBounds bounds={bounds} />
 
-        {/*
-         * Chrome overlay container. `pointer-events-none` so the empty
-         * gaps between shells let the user pan/zoom the map underneath;
-         * each shell flips back to `pointer-events-auto` for its own
-         * interactive surface.
-         *
-         * DOM order is deliberately: TopBar → MapOverlays → RightSidebar
-         * → BottomBar. Tab traversal then visits TopBar (back arrow,
-         * field title, CTAs) → AnalysisToolbar (the screen's primary
-         * NDVI/EVI/NDWI control) → RightSidebar pane → BottomBar →
-         * remaining bottom-corner overlays. AnalysisToolbar comes second
-         * because it is the live overlay control and reaching it before
-         * RightSidebar's coming-soon stubs matches its product priority.
-         */}
         <div className="pointer-events-none absolute inset-0">
-          {/*
-           * TopBar mirrors the BottomBar dodge so the page's central
-           * spine stays aligned (TopBar — AnalysisToolbar — DateTimeline —
-           * BottomBar all shift together when the sidebar pane opens).
-           */}
-          <div
-            className={cn(
-              'pointer-events-auto absolute top-3 left-1/2 -translate-x-1/2',
-              'motion-safe:transition-transform motion-safe:duration-200',
-              sidebarPaneOpen && 'lg:[transform:translateX(calc(-50%_-_11rem))]',
-            )}
-          >
+          {/* top-left */}
+          <div className="pointer-events-auto absolute top-3 left-3">
             <TopBar field={field} titleId={fieldTitleId} />
           </div>
 
-          {/*
-           * Module 5.5 — map overlay controls. Each overlay self-positions
-           * absolutely inside this container and opts back into pointer
-           * events on its interactive surface. See `MapOverlays.tsx`.
-           * Rendered before RightSidebar so AnalysisToolbar lands in tab
-           * order immediately after TopBar.
-           */}
+          {/* top-right — clears the 64 px right rail at right-3 */}
+          <div className="pointer-events-auto absolute top-3 right-20 flex items-center gap-2">
+            <GetOverviewButton />
+            <FieldSwitcherChip />
+          </div>
+
+          {/* left middle, scale bar, coords, date timeline, cloud toast, layer cluster */}
           <MapOverlays />
 
-          {/*
-           * RightSidebar anchors the full vertical space on the right
-           * edge (with a small margin from the chrome) so its rail can
-           * always be reached and its expanded pane has room to breathe.
-           * The component owns its own width animation between the
-           * 64 px collapsed rail and the ~364 px expanded rail+pane.
-           */}
+          {/* right edge — rail + optional inline pane on md+ */}
           <div className="pointer-events-auto absolute top-3 right-3 bottom-3">
             <RightSidebar field={field} />
           </div>
 
-          {/*
-           * BottomBar is centered horizontally over the map. When the
-           * RightSidebar pane is expanded (~364 px wide on the right),
-           * shift the bar left by ~192 px on `lg+` so its right edge
-           * stops clear of the pane even on the narrowest 1024 px lg
-           * viewport (the 11 rem dodge used elsewhere is too small at
-           * the breakpoint where the dodge first engages). The transition
-           * keeps the shift smooth as the user toggles the sidebar.
-           */}
-          <div
-            className={cn(
-              'pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2',
-              'motion-safe:transition-transform motion-safe:duration-200',
-              sidebarPaneOpen && 'lg:[transform:translateX(calc(-50%_-_12rem))]',
-            )}
-          >
+          {/* bottom-left tray */}
+          <div className="pointer-events-auto absolute bottom-3 left-3">
             <BottomBar field={field} />
           </div>
         </div>
@@ -177,30 +110,12 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
   );
 }
 
-/**
- * Effect-only child of `<MapView>` that fits the camera to the field's
- * bounding box exactly once per `bounds` identity. Lives inside `<MapView>`
- * so it can read the live map instance from `MapContext`.
- *
- * Why a separate component (instead of an effect at the layout level):
- * the `MapContext` provider is rendered by `<MapView>`, so any consumer
- * must be its descendant.
- *
- * Why gate on `isReady` (and not `isStyleReady`): `fitBounds` only needs
- * a live MapLibre instance — it does not touch sources or layers, so it
- * doesn't have to wait for the ArcGIS basemap swap to land. Running as
- * soon as `'load'` fires keeps the camera correct from the first paint
- * and avoids a visible "snap" after the basemap arrives.
- */
 function FitToFieldBounds({ bounds }: { bounds: [number, number, number, number] }) {
   const { map, isReady } = useMapContext();
   const lastFittedRef = useRef<[number, number, number, number] | null>(null);
 
   useEffect(() => {
     if (!map || !isReady) return;
-    // Skip if we've already fitted to these exact bounds (StrictMode
-    // double-effect, or an unrelated re-render that produced the same
-    // bbox tuple).
     const last = lastFittedRef.current;
     if (
       last &&
@@ -211,14 +126,14 @@ function FitToFieldBounds({ bounds }: { bounds: [number, number, number, number]
     ) {
       return;
     }
-    // Pad for the chrome overlays so the polygon doesn't sit underneath
-    // them on first fit. Defaults of `useUiStore` open both shells:
-    //   - TopBar (~56 px) → top
-    //   - RightSidebar pane (~364 px) → right
-    //   - BottomBar (~320 px expanded) → bottom
-    // Module 5.5 may revisit if new overlays push content further.
+    // Padding clears the new edge-anchored chrome envelope:
+    // - top 64 = 40 px TopBar + 12 px margin + 12 px breathing room
+    // - right 88 = 64 px rail + 12 px margin + 12 px breathing room
+    //   (the optional pane *overlays* and is not factored in)
+    // - bottom 96 = 36 px DateTimeline + 36 px collapsed tray + 24 px
+    // - left 88 = symmetric with right; clears the 40 px zoom column
     map.fitBounds(bounds, {
-      padding: { top: 72, right: 380, bottom: 336, left: 80 },
+      padding: { top: 64, right: 88, bottom: 96, left: 88 },
       animate: false,
       maxZoom: 17,
     });

@@ -10,6 +10,8 @@
 import { NavigationControl } from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { useMapContext } from '@/components/map/MapContext';
+import { CHIP_BASE } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 export function ZoomControls() {
   const { map, isReady } = useMapContext();
@@ -37,19 +39,17 @@ export function ZoomControls() {
   return (
     <div
       ref={slotRef}
-      className={[
-        'pointer-events-auto absolute top-1/2 left-3 -translate-y-1/2 rounded-md',
-        'border border-white/10 bg-black/70 p-1 text-white shadow-lg backdrop-blur-md saturate-150',
+      className={cn(
+        CHIP_BASE,
+        'pointer-events-auto absolute top-1/2 left-3 -translate-y-1/2 p-1',
         // Re-skin the native MapLibre zoom buttons to match our dark chrome.
         '[&_.maplibregl-ctrl-group]:!border-0 [&_.maplibregl-ctrl-group]:!bg-transparent [&_.maplibregl-ctrl-group]:!shadow-none',
         '[&_.maplibregl-ctrl-group_button]:!h-9 [&_.maplibregl-ctrl-group_button]:!w-9',
         '[&_.maplibregl-ctrl-group_button]:!bg-transparent',
         '[&_.maplibregl-ctrl-group_button]:hover:!bg-white/10',
         '[&_.maplibregl-ctrl-group_button+button]:!border-t [&_.maplibregl-ctrl-group_button+button]:!border-white/20',
-        // Native MapLibre icons are rendered as background-image SVGs
-        // tinted dark; invert them for the dark frosted background.
         '[&_.maplibregl-ctrl-icon]:!brightness-0 [&_.maplibregl-ctrl-icon]:!invert',
-      ].join(' ')}
+      )}
     />
   );
 }

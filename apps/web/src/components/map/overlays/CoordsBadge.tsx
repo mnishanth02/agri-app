@@ -24,6 +24,8 @@
 import type { MapMouseEvent } from 'maplibre-gl';
 import { useEffect, useState } from 'react';
 import { useMapContext } from '@/components/map/MapContext';
+import { CHIP_BASE } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
 
 // `en-US` is intentional — coordinate decimals should always use a `.`
 // separator regardless of browser locale (scientific convention).
@@ -57,14 +59,19 @@ export function CoordsBadge() {
 
   // Hide the chip while idle so it doesn't display a meaningless
   // placeholder; it reappears the moment the cursor enters the map.
-  // Hidden below `lg` to free the top row for the centered TopBar on
-  // narrower viewports.
+  // Anchored just below TopBar (which lives at `top-3 left-3`) on `lg+`
+  // and hidden on narrower viewports so the map stays uncluttered.
   if (!coords) return null;
 
   const label = `${COORD_FORMATTER.format(coords.lat)}°, ${COORD_FORMATTER.format(coords.lng)}°`;
 
   return (
-    <div className="pointer-events-none absolute top-3 left-3 hidden h-9 min-w-[16rem] items-center rounded-md border border-white/10 bg-black/70 px-3 text-white text-xs tabular-nums shadow-lg backdrop-blur-md saturate-150 lg:inline-flex">
+    <div
+      className={cn(
+        CHIP_BASE,
+        'pointer-events-none absolute top-14 left-3 hidden h-9 min-w-[16rem] items-center px-3 text-xs tabular-nums lg:inline-flex',
+      )}
+    >
       <span className="sr-only">Cursor coordinates: </span>
       <span>{label}</span>
     </div>
