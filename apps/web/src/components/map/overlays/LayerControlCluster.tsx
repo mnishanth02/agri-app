@@ -139,81 +139,86 @@ export function LayerControlCluster() {
   };
 
   // Below `md` the expanded body lives inside a `Popover`; on `md+` it
-  // sits inline next to the puck.
+  // sits inline next to the puck. Module 5.7: positioning is owned by
+  // the parent `BottomRow` — this component returns the chip / puck
+  // directly.
   if (!isMd) {
     return (
-      <div className="pointer-events-auto absolute right-3 bottom-3">
-        <Popover>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  aria-label="Layer controls"
-                  className={cn(
-                    CHIP_BASE,
-                    CHIP_FOCUS,
-                    'inline-flex size-10 items-center justify-center transition-colors hover:bg-black/80',
-                  )}
-                >
-                  <LayersIcon aria-hidden="true" className="size-4" />
-                </button>
-              </PopoverTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top">Layer controls</TooltipContent>
-          </Tooltip>
-          <PopoverContent side="top" align="end" className="w-[260px]">
-            <ControlsStack />
-          </PopoverContent>
-        </Popover>
+      <Popover>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Layer controls"
+                className={cn(
+                  CHIP_BASE,
+                  CHIP_FOCUS,
+                  'pointer-events-auto inline-flex size-10 items-center justify-center transition-colors hover:bg-black/80',
+                )}
+              >
+                <LayersIcon aria-hidden="true" className="size-4" />
+              </button>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">Layer controls</TooltipContent>
+        </Tooltip>
+        <PopoverContent side="top" align="end" className="w-[260px]">
+          <ControlsStack />
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  if (expanded) {
+    return (
+      <div
+        className={cn(
+          CHIP_BASE,
+          'pointer-events-auto inline-flex h-10 max-w-[360px] items-center gap-1 px-2',
+        )}
+      >
+        <ControlsRow />
+        <span aria-hidden="true" className="h-6 w-px bg-white/15" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Collapse layer controls"
+              aria-pressed={expanded}
+              onClick={handleToggle}
+              className={cn(
+                'inline-flex size-9 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
+                CHIP_FOCUS,
+              )}
+            >
+              <ChevronRightIcon aria-hidden="true" className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Collapse</TooltipContent>
+        </Tooltip>
       </div>
     );
   }
 
   return (
-    <div className="pointer-events-auto absolute right-20 bottom-3">
-      {expanded ? (
-        <div className={cn(CHIP_BASE, 'inline-flex h-10 max-w-[360px] items-center gap-1 px-2')}>
-          <ControlsRow />
-          <span aria-hidden="true" className="h-6 w-px bg-white/15" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-label="Collapse layer controls"
-                aria-pressed={expanded}
-                onClick={handleToggle}
-                className={cn(
-                  'inline-flex size-9 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
-                  CHIP_FOCUS,
-                )}
-              >
-                <ChevronRightIcon aria-hidden="true" className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Collapse</TooltipContent>
-          </Tooltip>
-        </div>
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Expand layer controls"
-              aria-pressed={expanded}
-              onClick={handleToggle}
-              className={cn(
-                CHIP_BASE,
-                CHIP_FOCUS,
-                'inline-flex size-10 items-center justify-center transition-colors hover:bg-black/80',
-              )}
-            >
-              <LayersIcon aria-hidden="true" className="size-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Layer controls</TooltipContent>
-        </Tooltip>
-      )}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="Expand layer controls"
+          aria-pressed={expanded}
+          onClick={handleToggle}
+          className={cn(
+            CHIP_BASE,
+            CHIP_FOCUS,
+            'pointer-events-auto inline-flex size-10 items-center justify-center transition-colors hover:bg-black/80',
+          )}
+        >
+          <LayersIcon aria-hidden="true" className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">Layer controls</TooltipContent>
+    </Tooltip>
   );
 }

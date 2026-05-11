@@ -16,7 +16,7 @@
  * ## Why a separate `coords` state instead of a ref + DOM mutation
  *
  * The badge is small and only rerenders when the cursor moves *over*
- * the map; the surrounding chrome (TopBar, RightSidebar, BottomBar)
+ * the map; the surrounding chrome (TopBar, RightSidebar, BottomDock)
  * never reads from `coords`, so React reconciliation cost is negligible
  * compared to MapLibre's own per-frame work.
  */

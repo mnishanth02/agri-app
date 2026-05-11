@@ -1,7 +1,7 @@
 /**
  * Shared visual tokens for the dark frosted "chip" chrome used across the
  * analysis screen. Single source of truth for the surface recipe so every
- * floating chip (TopBar, BottomBar tray, LayerControlCluster, rail, pane,
+ * floating chip (TopBar, BottomDock, LayerControlCluster, rail, pane,
  * CoordsBadge, ScaleBar, CloudHiddenToast, FieldSwitcherChip,
  * GetOverviewButton) stays in lockstep.
  *

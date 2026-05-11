@@ -17,9 +17,10 @@ export const Route = createFileRoute('/_auth/fields/$id')({
  * render states:
  *
  *   1. **Loading** (`isLoading`, no cached data): a subtle full-bleed
- *      skeleton sized to the same `calc(100dvh - 3.5rem)` viewport as
- *      `<AnalysisLayout>` so the actual map mounts in place without any
- *      layout shift.
+ *      skeleton sized to the same `100dvh` viewport as `<AnalysisLayout>`
+ *      so the actual map mounts in place without any layout shift. (The
+ *      `_auth` header is gated off on this route — see Module 5.7 in
+ *      `docs/ui-ux-redesign-v2.md` § 5.A.)
  *   2. **404** (`error instanceof ApiError && error.status === 404`):
  *      redirect to `/`. The redirect runs from a `useEffect` rather than
  *      during render because TanStack Router's `useNavigate()` hook (like
@@ -84,7 +85,7 @@ function FieldDetailPage() {
  * mounts in place without layout shift. Background is `bg-black` to match
  * the eventual map canvas background — avoids a flash from light skeleton →
  * black void → satellite tiles. Three faint ghost rectangles trace where
- * the TopBar / RightSidebar / BottomBar shells will sit so the layout
+ * the TopBar / RightSidebar / BottomDock shells will sit so the layout
  * mounts in roughly the same shape it will end up in. `motion-safe:` on
  * `animate-pulse` respects `prefers-reduced-motion`.
  */
@@ -93,7 +94,7 @@ function FieldDetailSkeleton() {
     <output
       aria-busy="true"
       aria-label="Loading field…"
-      className="relative block h-[calc(100dvh-3.5rem)] w-full overflow-hidden bg-black"
+      className="relative block h-dvh w-full overflow-hidden bg-black"
     >
       <span className="pointer-events-none absolute inset-0">
         <span className="absolute top-3 left-1/2 block h-9 w-64 -translate-x-1/2 rounded-md bg-white/5 motion-safe:animate-pulse" />

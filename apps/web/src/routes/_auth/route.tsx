@@ -1,5 +1,5 @@
 import { UserButton } from '@clerk/react';
-import { createFileRoute, Link, Outlet, redirect } from '@tanstack/react-router';
+import { createFileRoute, Link, Outlet, redirect, useMatches } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_auth')({
   beforeLoad: ({ context, location }) => {
@@ -13,7 +13,23 @@ export const Route = createFileRoute('/_auth')({
   component: AuthLayout,
 });
 
+/**
+ * Module 5.7 — `/fields/$id` is the only `_auth` child that opts out of the
+ * global header so the analysis canvas can claim the full viewport (the
+ * map otherwise loses 3.5 rem to a header that only repeats dashboard
+ * data). Every other authed route still renders the brand + sign-out
+ * menu. See `docs/ui-ux-redesign-v2.md` § 5.A.1.
+ */
+const HEADERLESS_ROUTE_IDS: ReadonlySet<string> = new Set(['/_auth/fields/$id']);
+
 function AuthLayout() {
+  const matches = useMatches();
+  const isHeaderlessRoute = matches.some((m) => HEADERLESS_ROUTE_IDS.has(m.routeId));
+
+  if (isHeaderlessRoute) {
+    return <Outlet />;
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">

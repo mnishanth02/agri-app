@@ -1,21 +1,24 @@
 /**
- * Module 5.6 — `AnalysisLayout`.
+ * Module 5.7 — `AnalysisLayout`.
  *
  * Full-bleed analysis shell for `/fields/$id`: a single MapLibre canvas
- * fills the viewport (minus the auth header), the basemap and persisted
- * field polygon paint on top, and edge-anchored chrome floats over the
- * map. Implements the layout described in `docs/ui-ux-redesign.md` § 3.
+ * fills the entire viewport (the `_auth` header is gated off on this
+ * route), the basemap and persisted field polygon paint on top, and
+ * edge-anchored chrome floats over the map. Implements the layout
+ * described in `docs/ui-ux-redesign-v2.md` § 4.
  *
  * ## Edge-anchored chrome
  *
  * Top-left: `TopBar` chip · Top-right: `GetOverviewButton` +
- * `FieldSwitcherChip` · Left middle: `ZoomControls` + `FullscreenButton`
- * (via `MapOverlays`) · Right edge: `RightSidebar` rail (+ optional
- * inline pane on md+) · Bottom-centre: `DateTimeline` · Bottom-left:
- * `BottomBar` tray · Bottom-right: `LayerControlCluster`.
+ * `FieldSwitcherChip` · Left edge: `ZoomControls` + `FullscreenButton`
+ * + `CloudHiddenToast` (stacked, `bottom` driven by `bottomBarTab`) ·
+ * Right edge: `RightSidebar` (single growing chip, rail + optional
+ * inline pane on md+) · Bottom: `BottomDock` (full-width dock, expands
+ * upward) and `BottomRow` (timeline centred + layer cluster right,
+ * shifts up with the dock).
  *
- * Nothing dodges: opening the right pane never repositions any other
- * shell. The pane overlays the map; other shells stay put.
+ * Nothing dodges the right pane; the dock + row + left chrome all
+ * animate `bottom` together when `bottomBarTab` toggles.
  *
  * ## Responsive default (D3)
  *
@@ -33,7 +36,8 @@ import { FieldLayer } from '@/components/map/FieldLayer';
 import { useMapContext } from '@/components/map/MapContext';
 import { MapView } from '@/components/map/MapView';
 import { MapOverlays } from '@/components/map/overlays/MapOverlays';
-import { BottomBar } from '@/components/shell/BottomBar';
+import { BottomDock } from '@/components/shell/BottomDock';
+import { BottomRow } from '@/components/shell/BottomRow';
 import { FieldSwitcherChip } from '@/components/shell/FieldSwitcherChip';
 import { GetOverviewButton } from '@/components/shell/GetOverviewButton';
 import { RightSidebar } from '@/components/shell/RightSidebar';
@@ -73,7 +77,7 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
   return (
     <section
       aria-labelledby={fieldTitleId}
-      className="relative h-[calc(100dvh-3.5rem)] w-full overflow-hidden bg-black"
+      className="relative h-dvh w-full overflow-hidden bg-black"
     >
       <MapView center={center} zoom={INITIAL_ZOOM} className="h-full w-full">
         <BasemapLayer />
@@ -92,18 +96,23 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
             <FieldSwitcherChip />
           </div>
 
-          {/* left middle, scale bar, coords, date timeline, cloud toast, layer cluster */}
+          {/* left middle: scale bar, coords, zoom column, cloud toast */}
           <MapOverlays />
 
-          {/* right edge — rail + optional inline pane on md+ */}
-          <div className="pointer-events-auto absolute top-3 right-3 bottom-3">
+          {/* right edge — single growing chip (rail + optional inline pane on md+).
+              `bottom-14` clears the collapsed BottomDock header (`h-11`) so the
+              last rail item stays clickable. When the dock expands the dock's
+              body (40vh) overlays the lower portion of the rail; the rail is
+              scrollable so users can still reach all items, or collapse the dock. */}
+          <div className="pointer-events-auto absolute top-3 right-3 bottom-14">
             <RightSidebar field={field} />
           </div>
 
-          {/* bottom-left tray */}
-          <div className="pointer-events-auto absolute bottom-3 left-3">
-            <BottomBar field={field} />
-          </div>
+          {/* bottom — full-width dock + floating row above it. Both
+              self-position via fixed/absolute classes and animate
+              `bottom` in lockstep with the left-edge chrome. */}
+          <BottomRow />
+          <BottomDock field={field} />
         </div>
       </MapView>
     </section>
@@ -127,13 +136,14 @@ function FitToFieldBounds({ bounds }: { bounds: [number, number, number, number]
       return;
     }
     // Padding clears the new edge-anchored chrome envelope:
-    // - top 64 = 40 px TopBar + 12 px margin + 12 px breathing room
-    // - right 88 = 64 px rail + 12 px margin + 12 px breathing room
-    //   (the optional pane *overlays* and is not factored in)
-    // - bottom 96 = 36 px DateTimeline + 36 px collapsed tray + 24 px
-    // - left 88 = symmetric with right; clears the 40 px zoom column
+    // - top 24 = no header, only the `top-3` chip envelope.
+    // - right 96 = 64 px rail + 12 + 12 + 8 px breathing.
+    // - bottom 132 = 44 px dock header + 40 px row + 12 px gap × 2 + 24 px safety.
+    //   Sized for the collapsed dock; expansion is short and the user
+    //   already knows their polygon.
+    // - left 96 = symmetric with right; clears the 40 px zoom column.
     map.fitBounds(bounds, {
-      padding: { top: 64, right: 88, bottom: 96, left: 88 },
+      padding: { top: 24, right: 96, bottom: 132, left: 96 },
       animate: false,
       maxZoom: 17,
     });

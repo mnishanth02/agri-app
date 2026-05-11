@@ -131,7 +131,7 @@ const INITIAL_STATE: UiStoreState = {
   selectedIndex: 'NDVI',
   ndviOpacity: 0.75,
   activeSidebarItem: 'sample',
-  bottomBarTab: 'cropInfo',
+  bottomBarTab: null,
 };
 
 export const useUiStore = create<UiStore>()((set) => ({

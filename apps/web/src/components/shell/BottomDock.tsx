@@ -1,17 +1,22 @@
 /**
- * Module 5.6 — `BottomBar` (bottom-left tray).
+ * Module 5.7 — `BottomDock` (full-width bottom dock).
  *
- * Anchored at `bottom-3 left-3` by `AnalysisLayout`. Collapsed: 36 px-tall
- * pill with three tab triggers — `Crop info · Chart · Activities`.
- * Expanded: 320 × 320 panel on `md+`; on `<md` the expanded body
- * escalates to a shadcn bottom `Sheet` (see `docs/ui-ux-redesign.md`
- * § D2 + § R.B.6 + § R.C.2).
+ * Replaces the bottom-left `BottomBar` tray with an edge-to-edge dock
+ * anchored to the bottom of the viewport. Header (`h-11`) is always
+ * visible: 3 tab triggers (Crop / Chart / Activities) on the left, a
+ * chevron toggle on the right. Body renders only when expanded
+ * (`useUiStore.bottomBarTab !== null`), capped at `40vh` and laid out
+ * as a `grid-cols-1 md:2 lg:4` of cards.
  *
- * Width policy:
- * - collapsed: `w-[280px]`
- * - expanded (`md+`): `w-[360px]`
+ * No `<md` Sheet escalation — the dock is already a full-width drawer
+ * at every viewport, so phones get the same dock UX as desktops.
  *
- * State unchanged: `useUiStore.bottomBarTab`.
+ * State unchanged from Module 5.6's `BottomBar`: same
+ * `useUiStore.bottomBarTab` selector + setter, same `lastActiveTabRef`
+ * pattern so re-expanding restores the previous tab. ESC collapses and
+ * refocuses the chevron.
+ *
+ * See `docs/ui-ux-redesign-v2.md` § 7.C.1 for the design rationale.
  */
 
 import type { FieldDto } from '@viz-crop/shared';
@@ -31,11 +36,9 @@ import {
   useRef,
 } from 'react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
+import { CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { type BottomBarTab, useUiStore } from '@/stores/useUiStore';
 
@@ -60,14 +63,13 @@ const DEFAULT_TAB: BottomBarTab = 'cropInfo';
 
 const CARD_CLASS = 'rounded-md border border-white/10 bg-white/5 p-3 text-sm';
 
-export type BottomBarProps = {
+export type BottomDockProps = {
   field: FieldDto;
 };
 
-export function BottomBar({ field }: BottomBarProps) {
+export function BottomDock({ field }: BottomDockProps) {
   const bottomBarTab = useUiStore((s) => s.bottomBarTab);
   const setBottomBarTab = useUiStore((s) => s.setBottomBarTab);
-  const isMd = useMediaQuery('(min-width: 768px)');
 
   const lastActiveTabRef = useRef<BottomBarTab>(bottomBarTab ?? DEFAULT_TAB);
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -80,6 +82,7 @@ export function BottomBar({ field }: BottomBarProps) {
 
   const handleTabChange = useCallback(
     (value: string) => {
+      // Auto-expand to the chosen tab when the dock is collapsed.
       setBottomBarTab(value as BottomBarTab);
     },
     [setBottomBarTab],
@@ -99,7 +102,7 @@ export function BottomBar({ field }: BottomBarProps) {
   const handleTogglePress = isExpanded ? handleCollapse : handleExpand;
 
   const handleRootKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    (event: ReactKeyboardEvent<HTMLElement>) => {
       if (event.key === 'Escape' && isExpanded) {
         event.stopPropagation();
         handleCollapse();
@@ -108,23 +111,26 @@ export function BottomBar({ field }: BottomBarProps) {
     [handleCollapse, isExpanded],
   );
 
-  const trayWidth = isExpanded && isMd ? 'w-[360px]' : 'w-[280px]';
-
   return (
     <section
       aria-label="Field details"
       onKeyDown={handleRootKeyDown}
-      className={cn(CHIP_BASE, 'z-10 touch-manipulation overflow-hidden', trayWidth)}
+      className={cn(
+        // Full-width dock — `rounded-t-2xl` only (top corners), so it
+        // visually anchors to the bottom edge of the viewport.
+        'pointer-events-auto fixed inset-x-0 bottom-0 z-20 touch-manipulation',
+        'rounded-t-2xl border-white/10 border-t bg-black/80 text-white shadow-lg backdrop-blur-md saturate-150',
+      )}
     >
       <Tabs value={bottomBarTab ?? ''} onValueChange={handleTabChange} className="gap-0">
-        <div className="flex h-9 items-center justify-between gap-1 px-1.5">
-          <TabsList variant="line" className="h-7 gap-0.5 bg-transparent p-0">
+        <div className="flex h-11 items-center justify-between gap-2 px-3 md:px-4">
+          <TabsList variant="line" className="h-8 gap-0.5 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
                 className={cn(
-                  'h-7 flex-none rounded-md px-2 text-xs font-medium text-white/70 transition-colors',
+                  'h-8 flex-none rounded-md px-3 font-medium text-sm text-white/70 transition-colors',
                   'hover:bg-white/5 hover:text-white',
                   'data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none',
                   'dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-white/15 dark:data-[state=active]:text-white',
@@ -142,11 +148,11 @@ export function BottomBar({ field }: BottomBarProps) {
               <button
                 type="button"
                 ref={toggleButtonRef}
-                aria-label={isExpanded ? 'Collapse bottom bar' : 'Expand bottom bar'}
+                aria-label={isExpanded ? 'Collapse field details' : 'Expand field details'}
                 aria-expanded={isExpanded}
                 onClick={handleTogglePress}
                 className={cn(
-                  'inline-flex size-7 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
+                  'inline-flex size-8 items-center justify-center rounded-md text-white/70 transition-colors hover:bg-white/10 hover:text-white',
                   CHIP_FOCUS,
                 )}
               >
@@ -161,61 +167,22 @@ export function BottomBar({ field }: BottomBarProps) {
           </Tooltip>
         </div>
 
-        {/* md+: inline body below the header */}
-        {isMd && isExpanded ? (
+        {isExpanded ? (
           <div
             className={cn(
-              'h-[280px] overflow-y-auto overscroll-contain border-white/10 border-t p-3',
+              'max-h-[40vh] overflow-y-auto overscroll-contain border-white/10 border-t px-4 py-3 md:px-6',
               'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200',
             )}
           >
-            <BottomBarBody field={field} />
+            <BottomDockBody field={field} />
           </div>
         ) : null}
       </Tabs>
-
-      {/* <md: expanded body lives in a bottom Sheet so it doesn't fight
-          the LayerControlCluster / DateTimeline for space on phones. */}
-      {!isMd ? (
-        <Sheet
-          open={isExpanded}
-          onOpenChange={(open) => {
-            if (!open) handleCollapse();
-          }}
-        >
-          <SheetContent
-            side="bottom"
-            className="max-h-[70vh] gap-3 overflow-y-auto border-white/10 bg-black/90 p-4 text-white backdrop-blur-md"
-          >
-            <Tabs value={bottomBarTab ?? ''} onValueChange={handleTabChange} className="gap-3">
-              <TabsList variant="line" className="h-8 gap-1 bg-transparent p-0">
-                {TABS.map((tab) => (
-                  <TabsTrigger
-                    key={tab.value}
-                    value={tab.value}
-                    className={cn(
-                      'h-8 flex-none rounded-md px-3 text-sm font-medium text-white/70 transition-colors',
-                      'hover:bg-white/5 hover:text-white',
-                      'data-[state=active]:bg-white/15 data-[state=active]:text-white data-[state=active]:shadow-none',
-                      'dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-white/15 dark:data-[state=active]:text-white',
-                      CHIP_FOCUS,
-                      'after:hidden',
-                    )}
-                  >
-                    {tab.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              <BottomBarBody field={field} />
-            </Tabs>
-          </SheetContent>
-        </Sheet>
-      ) : null}
     </section>
   );
 }
 
-function BottomBarBody({ field }: { field: FieldDto }) {
+function BottomDockBody({ field }: { field: FieldDto }) {
   return (
     <>
       <TabsContent value="cropInfo" className="mt-0 outline-none">
@@ -242,7 +209,7 @@ function CropInfoTab({ field }: { field: FieldDto }) {
   const seasonLabel = field.season?.trim() || '—';
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
       <article className={CARD_CLASS} aria-labelledby={rotationHeadingId}>
         <h3
           id={rotationHeadingId}

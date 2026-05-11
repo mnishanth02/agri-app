@@ -14,9 +14,7 @@
 
 import { CloudHiddenToast } from './CloudHiddenToast';
 import { CoordsBadge } from './CoordsBadge';
-import { DateTimeline } from './DateTimeline';
 import { FullscreenButton } from './FullscreenButton';
-import { LayerControlCluster } from './LayerControlCluster';
 import { ScaleBar } from './ScaleBar';
 import { ZoomControls } from './ZoomControls';
 
@@ -27,9 +25,7 @@ export function MapOverlays() {
       <ScaleBar />
       <ZoomControls />
       <FullscreenButton />
-      <DateTimeline />
       <CloudHiddenToast />
-      <LayerControlCluster />
     </>
   );
 }

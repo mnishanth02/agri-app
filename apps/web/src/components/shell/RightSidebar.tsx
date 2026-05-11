@@ -65,12 +65,15 @@ export function RightSidebar({ field }: RightSidebarProps) {
   }, [setActiveSidebarItem]);
 
   // md+ inline behaviour: rail + pane share one container that grows
-  // from 64 px to 364 px.
+  // from 64 px to 364 px. Module 5.7: outer container owns `CHIP_BASE`
+  // so opening a pane reads as the same chip expanding (one shadow,
+  // one border) — see `docs/ui-ux-redesign-v2.md` § 6.
   if (isMd) {
     return (
       <div
         className={cn(
-          'flex h-full',
+          CHIP_BASE,
+          'flex h-full overflow-hidden',
           'motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out',
           activeConfig ? 'w-[364px]' : 'w-16',
         )}
@@ -84,10 +87,12 @@ export function RightSidebar({ field }: RightSidebarProps) {
     );
   }
 
-  // <md: only the rail stays inline; pane escalates to a Sheet.
+  // <md: only the rail stays inline; pane escalates to a Sheet. The
+  // rail still needs chip chrome here since it stands alone (no outer
+  // expanding container like the md+ branch).
   return (
     <>
-      <div className="flex h-full w-16">
+      <div className={cn(CHIP_BASE, 'flex h-full w-16 overflow-hidden')}>
         <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
       </div>
 
@@ -172,10 +177,7 @@ function Rail({ activeId, onSelect, ref }: RailProps) {
       aria-orientation="vertical"
       aria-label="Field analysis sidebar"
       onKeyDown={handleKeyDown}
-      className={cn(
-        CHIP_BASE,
-        'flex h-full w-16 shrink-0 flex-col items-center gap-1 overflow-y-auto py-3',
-      )}
+      className={cn('flex h-full w-16 shrink-0 flex-col items-center gap-1 overflow-y-auto py-3')}
     >
       {primary.map((item) => (
         <RailButton
@@ -284,9 +286,12 @@ function PaneBody({ field, config, onClose, inSheet = false }: PaneBodyProps) {
         inSheet
           ? 'w-full'
           : cn(
-              CHIP_BASE,
-              'mr-2 w-[300px] shrink-0',
-              'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200',
+              // Module 5.7: pane no longer carries its own chip chrome.
+              // Outer RightSidebar container owns CHIP_BASE; pane just
+              // contributes a hairline divider against the rail and a
+              // cross-fade body so opening reads as expansion.
+              'w-[300px] shrink-0 border-white/10 border-r',
+              'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150',
             ),
       )}
     >

@@ -1,5 +1,7 @@
 # Field Analysis UI/UX Redesign Plan
 
+> **Superseded by [`ui-ux-redesign-v2.md`](./ui-ux-redesign-v2.md)** for the bottom-bar / right-sidebar / header sections (Module 5.7). The rest of this document still applies to Module 5.6 (edge-anchored chrome v1).
+
 > Companion to [`implementation.md`](./implementation.md). Phase 5 has shipped the full layout (`/fields/$id`) but the chrome is overcrowded and breaks on common laptop widths. This document specifies the redesign and is meant to be executed **before** Phase 6 begins so NDVI tiles land in the corrected chrome rather than the legacy one.
 >
 > **Document version:** 1.0
