@@ -36,10 +36,10 @@ export function CloudHiddenToast() {
   return (
     <output
       aria-live="polite"
-      // Stacks above FullscreenButton: dock + 1rem zoom gap + ~88px
-      // zoom + 16 px gap + ~36px fullscreen + 16 px breathing ≈
-      // 8.75 rem above dock-h.
-      style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 8.75rem + 1rem)' }}
+      // Stacks above FullscreenButton with a matching ~16 px gap.
+      // Fullscreen chip (~44 px tall) anchors at `dock + 7rem`, so its
+      // top edge is at `dock + 9.75rem`; anchor toast at `dock + 11rem`.
+      style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 11rem)' }}
       className={cn(
         CHIP_BASE,
         'pointer-events-auto absolute left-3 z-10 inline-flex h-9 max-w-[calc(100vw-1.5rem)] items-center gap-2 pr-1 pl-3 text-xs',

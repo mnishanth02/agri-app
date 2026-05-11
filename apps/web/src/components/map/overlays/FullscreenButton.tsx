@@ -50,9 +50,11 @@ export function FullscreenButton() {
   return (
     <div
       ref={slotRef}
-      // Stacks above ZoomControls: dock + 1rem (zoom gap) + ~88px zoom
-      // column height + 16 px breathing ≈ 4.75 rem above dock-h.
-      style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 4.75rem + 1rem)' }}
+      // Stacks above ZoomControls with a clear visual gap. Zoom column
+      // ≈ 81 px (two 36 px buttons + 1 px divider + 8 px padding) sits
+      // at `dock + 1rem`, so its top edge is at `dock + 6.0625rem`.
+      // Anchor fullscreen at `dock + 7rem` for ~15 px breathing.
+      style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 7rem)' }}
       className={cn(
         CHIP_BASE,
         'pointer-events-auto absolute left-3 z-10 p-1',
