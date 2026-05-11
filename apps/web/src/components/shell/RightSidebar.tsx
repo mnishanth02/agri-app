@@ -75,7 +75,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { type SidebarItem, useUiStore } from '@/stores/useUiStore';
 import { getSidebarItem, SIDEBAR_ITEMS, type SidebarItemConfig } from './sidebar-items';
@@ -122,21 +122,19 @@ export function RightSidebar({ field }: RightSidebarProps) {
   }, [setActiveSidebarItem]);
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <div
-        className={cn(
-          'flex h-full',
-          // `transition-[width]` (NOT `transition-all`) keeps the slide
-          // cheap. `motion-safe:` honors `prefers-reduced-motion`.
-          'motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out',
-          activeConfig ? 'w-[364px]' : 'w-16',
-        )}
-      >
-        {activeConfig ? <Pane field={field} config={activeConfig} onClose={handleClose} /> : null}
+    <div
+      className={cn(
+        'flex h-full',
+        // `transition-[width]` (NOT `transition-all`) keeps the slide
+        // cheap. `motion-safe:` honors `prefers-reduced-motion`.
+        'motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out',
+        activeConfig ? 'w-[364px]' : 'w-16',
+      )}
+    >
+      {activeConfig ? <Pane field={field} config={activeConfig} onClose={handleClose} /> : null}
 
-        <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
-      </div>
-    </TooltipProvider>
+      <Rail ref={railContainerRef} activeId={activeSidebarItem} onSelect={handleSelect} />
+    </div>
   );
 }
 

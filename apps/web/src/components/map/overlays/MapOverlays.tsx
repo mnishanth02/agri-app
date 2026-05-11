@@ -10,10 +10,11 @@
  *
  * Children must be rendered inside a `<MapView>` so the ones that read
  * the live MapLibre instance (`CoordsBadge`, `ScaleBar`, `ZoomControls`,
- * `FullscreenButton`) can call `useMapContext()`.
+ * `FullscreenButton`) can call `useMapContext()`. Tooltips inside
+ * `SourceSwitcher` / `DownloadButton` rely on the app-wide
+ * `<TooltipProvider>` mounted in `routes/__root.tsx`.
  */
 
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { AnalysisToolbar } from './AnalysisToolbar';
 import { CloudHiddenToast } from './CloudHiddenToast';
 import { CoordsBadge } from './CoordsBadge';
@@ -24,12 +25,8 @@ import { SourceSwitcher } from './SourceSwitcher';
 import { ZoomControls } from './ZoomControls';
 
 export function MapOverlays() {
-  // Local TooltipProvider so disabled stubs (`SourceSwitcher`,
-  // `DownloadButton`) and other tooltip consumers inside the overlay
-  // tree have a Radix provider in scope. The other shells own their
-  // own providers, so adding one at the app root would be redundant.
   return (
-    <TooltipProvider delayDuration={300}>
+    <>
       <CoordsBadge />
       <ScaleBar />
       <ZoomControls />
@@ -38,6 +35,6 @@ export function MapOverlays() {
       <DateTimeline />
       <CloudHiddenToast />
       <SourceSwitcher />
-    </TooltipProvider>
+    </>
   );
 }

@@ -44,7 +44,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export type TopBarProps = {
   field: FieldDto;
@@ -68,85 +68,81 @@ export function TopBar({ field, titleId }: TopBarProps) {
     : '—';
 
   return (
-    <TooltipProvider delayDuration={300}>
-      <div className="flex h-12 w-auto max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-full border border-white/10 bg-black/70 pr-1.5 pl-2 text-white shadow-lg backdrop-blur-md saturate-150">
-        <Link
-          to="/"
-          aria-label="Back to your fields"
-          className="inline-flex size-9 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
+    <div className="flex h-12 w-auto max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-full border border-white/10 bg-black/70 pr-1.5 pl-2 text-white shadow-lg backdrop-blur-md saturate-150">
+      <Link
+        to="/"
+        aria-label="Back to your fields"
+        className="inline-flex size-9 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
+      >
+        <ArrowLeftIcon aria-hidden="true" className="size-4" />
+      </Link>
+
+      <div className="flex min-w-0 items-center gap-2">
+        <MapPinIcon aria-hidden="true" className="size-4 shrink-0 text-white/60" />
+        {/*
+         * Page-level h1: the field name is the screen's primary
+         * subject, so it owns the document outline. Default browser h1
+         * margins are reset via `m-0` so the heading sits inline within
+         * the chip.
+         */}
+        <h1
+          id={titleId}
+          className="m-0 min-w-0 max-w-[clamp(8rem,40vw,18rem)] truncate font-semibold text-base text-white tracking-tight"
+          title={field.name}
         >
-          <ArrowLeftIcon aria-hidden="true" className="size-4" />
-        </Link>
-
-        <div className="flex min-w-0 items-center gap-2">
-          <MapPinIcon aria-hidden="true" className="size-4 shrink-0 text-white/60" />
-          {/*
-           * Page-level h1: the field name is the screen's primary
-           * subject, so it owns the document outline. Default browser h1
-           * margins are reset via `m-0` so the heading sits inline within
-           * the chip.
-           */}
-          <h1
-            id={titleId}
-            className="m-0 min-w-0 max-w-[clamp(8rem,40vw,18rem)] truncate font-semibold text-base text-white tracking-tight"
-            title={field.name}
-          >
-            {field.name}
-          </h1>
-          <span aria-hidden="true" className="text-white/30">
-            ·
-          </span>
-          {hasArea ? (
-            <span className="whitespace-nowrap text-white/85 text-xs tabular-nums">
-              {areaLabel}
-            </span>
-          ) : (
-            <>
-              <span className="sr-only">Area unavailable</span>
-              <span aria-hidden="true" className="text-white/60 text-xs">
-                —
-              </span>
-            </>
-          )}
-        </div>
-
-        <span className="hidden whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-white text-xs sm:inline-flex">
-          {field.cropType}
+          {field.name}
+        </h1>
+        <span aria-hidden="true" className="text-white/30">
+          ·
         </span>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="default"
-              aria-disabled="true"
-              onClick={(event) => event.preventDefault()}
-              className="h-9 cursor-not-allowed rounded-full opacity-60 hover:bg-primary focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
-            >
-              Get overview
-              <span className="sr-only"> (coming soon)</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Get overview coming soon…</TooltipContent>
-        </Tooltip>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-9 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/15"
-            >
-              All fields
-              <ChevronDownIcon aria-hidden="true" className="size-3.5 opacity-80" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={8}>
-            <DropdownMenuLabel className="text-muted-foreground text-xs">
-              Your fields
-            </DropdownMenuLabel>
-            <DropdownMenuItem disabled>Field switching is coming soon…</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {hasArea ? (
+          <span className="whitespace-nowrap text-white/85 text-xs tabular-nums">{areaLabel}</span>
+        ) : (
+          <>
+            <span className="sr-only">Area unavailable</span>
+            <span aria-hidden="true" className="text-white/60 text-xs">
+              —
+            </span>
+          </>
+        )}
       </div>
-    </TooltipProvider>
+
+      <span className="hidden whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-white text-xs sm:inline-flex">
+        {field.cropType}
+      </span>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="default"
+            aria-disabled="true"
+            onClick={(event) => event.preventDefault()}
+            className="h-9 cursor-not-allowed rounded-full opacity-60 hover:bg-primary focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70"
+          >
+            Get overview
+            <span className="sr-only"> (coming soon)</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Get overview coming soon…</TooltipContent>
+      </Tooltip>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-9 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-black/70 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/15"
+          >
+            All fields
+            <ChevronDownIcon aria-hidden="true" className="size-3.5 opacity-80" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={8}>
+          <DropdownMenuLabel className="text-muted-foreground text-xs">
+            Your fields
+          </DropdownMenuLabel>
+          <DropdownMenuItem disabled>Field switching is coming soon…</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
