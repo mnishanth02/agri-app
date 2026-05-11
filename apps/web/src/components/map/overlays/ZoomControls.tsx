@@ -1,0 +1,64 @@
+/**
+ * Module 5.5 — `ZoomControls`.
+ *
+ * Wraps MapLibre's native `NavigationControl` (zoom only — compass and
+ * pitch visualization are off). Same manual `onAdd` / `onRemove` mount
+ * pattern as `ScaleBar`: keeps the buttons inside our own positioning
+ * slot rather than MapLibre's corner stack.
+ *
+ * Module 5.7 re-anchors this column to the bottom-left edge.
+ * Module 5.8 replaces the `bottomBarTab` selector with a single
+ * `var(--bottom-dock-h)` reference so the column tracks the dock's
+ * actual current height (including mid-drag resize) without its own
+ * subscription. The CSS-var fallback (`7rem`) covers the first paint
+ * before `BottomDock` mounts its publishing effect.
+ */
+
+import { NavigationControl } from 'maplibre-gl';
+import { useEffect, useRef } from 'react';
+import { useMapContext } from '@/components/map/MapContext';
+import { CHIP_BASE } from '@/lib/tokens';
+import { cn } from '@/lib/utils';
+
+export function ZoomControls() {
+  const { map, isReady } = useMapContext();
+  const slotRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!map || !isReady) return;
+    const slot = slotRef.current;
+    if (!slot) return;
+
+    const ctrl = new NavigationControl({
+      showCompass: false,
+      showZoom: true,
+      visualizePitch: false,
+    });
+    const el = ctrl.onAdd(map);
+    slot.appendChild(el);
+
+    return () => {
+      ctrl.onRemove();
+      if (el.parentNode === slot) slot.removeChild(el);
+    };
+  }, [map, isReady]);
+
+  return (
+    <div
+      ref={slotRef}
+      style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 1rem)' }}
+      className={cn(
+        CHIP_BASE,
+        'pointer-events-auto absolute left-3 z-10 p-1',
+        'dock-bottom-anchored motion-safe:transition-[bottom] motion-safe:duration-200',
+        // Re-skin the native MapLibre zoom buttons to match our dark chrome.
+        '[&_.maplibregl-ctrl-group]:!border-0 [&_.maplibregl-ctrl-group]:!bg-transparent [&_.maplibregl-ctrl-group]:!shadow-none',
+        '[&_.maplibregl-ctrl-group_button]:!h-9 [&_.maplibregl-ctrl-group_button]:!w-9',
+        '[&_.maplibregl-ctrl-group_button]:!bg-transparent',
+        '[&_.maplibregl-ctrl-group_button]:hover:!bg-white/10',
+        '[&_.maplibregl-ctrl-group_button+button]:!border-t [&_.maplibregl-ctrl-group_button+button]:!border-white/20',
+        '[&_.maplibregl-ctrl-icon]:!brightness-0 [&_.maplibregl-ctrl-icon]:!invert',
+      )}
+    />
+  );
+}

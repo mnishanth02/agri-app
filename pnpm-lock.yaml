@@ -84,6 +84,9 @@ importers:
       '@turf/area':
         specifier: ^7.3.5
         version: 7.3.5
+      '@turf/bbox':
+        specifier: ^7.3.5
+        version: 7.3.5
       '@turf/turf':
         specifier: ^7.3.5
         version: 7.3.5

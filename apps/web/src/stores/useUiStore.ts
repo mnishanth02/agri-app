@@ -34,8 +34,15 @@
  *   `plan.md` lines 97–100 ("Three tab shells: Crop info, Chart,
  *   Activities") and `implementation.md` line 687 (Module 5.4 tab list).
  *   The bottom bar is collapsible (`plan.md` line 97: "collapsible
- *   (~280 px when open)"), so `null` = closed. Default is `'cropInfo'` —
- *   the only tab with real content before Phase 7.
+ *   (~280 px when open)"), so `null` = closed. Module 5.8 changed the
+ *   default to `null` so the dock is collapsed on first paint.
+ * - **`bottomDockHeightVh` default: `40`.** Module 5.8 makes the dock
+ *   body resizable via a drag-grabber. Stored as a vh number rather than
+ *   a CSS string so consumers can compose it (e.g.
+ *   `calc(${vh}vh + 7rem)` for the dock total height). Range is clamped
+ *   by the drag handler to `[BOTTOM_DOCK_MIN_VH, BOTTOM_DOCK_MAX_VH]`;
+ *   the store stays dumb (no clamping) so unit tests can exercise edge
+ *   values.
  *
  * Sidebar item / tab ids are camelCased to match the existing TS convention
  * (`fieldActivity`, not `field-activity`); they are internal app keys, not
@@ -99,6 +106,17 @@ export type SidebarItem =
  */
 export type BottomBarTab = 'cropInfo' | 'chart' | 'activities';
 
+/**
+ * Min / max body height for the resizable BottomDock body, in `vh`.
+ * The drag handler in `BottomDock.tsx` clamps to this range; values
+ * outside are technically allowed by the store but should not be set
+ * by production callers. Below the minimum the dock collapses entirely
+ * (`bottomBarTab` becomes `null`).
+ */
+export const BOTTOM_DOCK_MIN_VH = 15;
+export const BOTTOM_DOCK_MAX_VH = 70;
+export const BOTTOM_DOCK_DEFAULT_VH = 40;
+
 export type UiStoreState = {
   /** Selected EOSDA View ID (e.g., `S2/43/P/GK/2026/3/23/0`). */
   selectedViewId: string | null;
@@ -109,6 +127,12 @@ export type UiStoreState = {
   activeSidebarItem: SidebarItem | null;
   /** `null` when the bottom bar is collapsed. */
   bottomBarTab: BottomBarTab | null;
+  /**
+   * Body height of the BottomDock when expanded, in `vh`. Ignored when
+   * `bottomBarTab === null`. Module 5.8 added this so users can drag the
+   * top-edge grabber to resize.
+   */
+  bottomDockHeightVh: number;
 };
 
 export type UiStoreActions = {
@@ -122,6 +146,13 @@ export type UiStoreActions = {
   setNdviOpacity: (opacity: number) => void;
   setActiveSidebarItem: (item: SidebarItem | null) => void;
   setBottomBarTab: (tab: BottomBarTab | null) => void;
+  /**
+   * Sets the BottomDock body height in `vh`. The drag handler is
+   * responsible for clamping to `[BOTTOM_DOCK_MIN_VH,
+   * BOTTOM_DOCK_MAX_VH]` and for collapsing the dock when the user
+   * drags below the minimum.
+   */
+  setBottomDockHeightVh: (vh: number) => void;
 };
 
 export type UiStore = UiStoreState & UiStoreActions;
@@ -131,7 +162,8 @@ const INITIAL_STATE: UiStoreState = {
   selectedIndex: 'NDVI',
   ndviOpacity: 0.75,
   activeSidebarItem: 'sample',
-  bottomBarTab: 'cropInfo',
+  bottomBarTab: null,
+  bottomDockHeightVh: BOTTOM_DOCK_DEFAULT_VH,
 };
 
 export const useUiStore = create<UiStore>()((set) => ({
@@ -141,4 +173,5 @@ export const useUiStore = create<UiStore>()((set) => ({
   setNdviOpacity: (opacity) => set({ ndviOpacity: opacity }),
   setActiveSidebarItem: (item) => set({ activeSidebarItem: item }),
   setBottomBarTab: (tab) => set({ bottomBarTab: tab }),
+  setBottomDockHeightVh: (vh) => set({ bottomDockHeightVh: vh }),
 }));

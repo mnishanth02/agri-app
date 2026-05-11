@@ -88,3 +88,22 @@
     transform: scale(1.08);
   }
 }
+
+/**
+ * Module 5.8 - while the user is dragging the BottomDock grabber,
+ * suppress the `transition-[bottom]` animations on every element
+ * that anchors itself to the dock via `--bottom-dock-h`. Without
+ * this, the dock body resizes synchronously but the floating chrome
+ * (zoom column / fullscreen / cloud toast / right sidebar) would
+ * lag a frame and animate after the cursor.
+ *
+ * `!important` is required to win against Tailwind's
+ * `motion-safe:transition-[bottom]` utility (which compiles to a
+ * media-query-wrapped rule that has equal selector specificity to
+ * this one); biome's noImportantStyles is suppressed for this
+ * targeted, attribute-gated override.
+ */
+:root[data-bottom-dock-dragging="true"] .dock-bottom-anchored {
+  /* biome-ignore lint/complexity/noImportantStyles: needed to override Tailwind's transition utility while dragging */
+  transition-property: none !important;
+}

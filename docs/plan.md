@@ -76,12 +76,12 @@ See [Section 2](#2-field-analysis-screen-anatomy) for the full anatomy.
 
 ## 2. Field Analysis Screen Anatomy
 
-The analysis screen is a full-bleed map with three layout shells (top, right, bottom) and a cluster of map-overlay controls. Functional controls live on the **map**, not in the shells. This matches the reference screenshots.
+The analysis screen is a full-bleed map with **edge-anchored chrome** (corners + sides, never centered competing) and a cluster of map-overlay controls. Functional controls live on the **map**, not in the shells. Matches the reference screenshots; the centered "dodge" pattern from the first cut was removed in Module 5.6 (see `docs/ui-ux-redesign.md`).
 
 ### Shells (chrome)
 
-- **Top bar** (`TopBar.tsx`): back arrow → `/`, field icon, field name, area in ha, crop type, "Get Overview" CTA, "All fields ▾".
-- **Right sidebar** (`RightSidebar.tsx`): collapsible icon rail. Collapsed = ~64 px (icons only); expanded = ~300 px (icon + label + active pane). Items rendered from a config array:
+- **Top-left chip** (`TopBar.tsx`): back arrow → `/`, pin icon, field name, area in ha. Trimmed in 5.6 — the former "Get overview" CTA and "All fields ▾" dropdown moved to the top-right slot as standalone chips (`GetOverviewButton`, `FieldSwitcherChip`).
+- **Right sidebar** (`RightSidebar.tsx`): collapsible icon rail. Collapsed = 64 px (icons only); expanded = 364 px (rail + pane). On `<md` only the rail stays inline — the pane escalates to a shadcn bottom-right `Sheet`. Items rendered from a config array:
   - Sample (active in v2 — shows NDVI stats for the selected scene)
   - Monitoring (stub — "Coming soon")
   - Weather (stub)
@@ -94,21 +94,21 @@ The analysis screen is a full-bleed map with three layout shells (top, right, bo
   - Notifications (stub)
   - Help Center (stub)
   - Marketplace (stub)
-- **Bottom bar** (`BottomBar.tsx`): collapsible (~280 px when open). Three tab shells:
-  - **Crop info** — Crop rotation card (current season + crop), Growth stages placeholder, Current risks placeholder, Sown area detected placeholder.
-  - **Chart** — recharts NDVI line over all cached scenes.
-  - **Activities** — empty list + "Add" button stub.
+- **Bottom-left tray** (`BottomBar.tsx`): collapsed = 280 × 36 pill anchored at `bottom-3 left-3` with three tab triggers (Crop · Chart · Activities) + expand chevron. Expanded = 360 × 320 panel on `md+`; on `<md` the body escalates to a shadcn bottom `Sheet`. Tab shells:
+  - **Crop info** — Crop rotation card (Season · Crop · Sowing · Area), Growth stages placeholder, Current risks placeholder, Sown area detected placeholder. Two-column grid on `md+`.
+  - **Chart** — recharts NDVI line over all cached scenes (Phase 7).
+  - **Activities** — empty list + disabled "Add activity" button stub.
 
 ### Map overlays (functional controls — absolutely positioned over the map canvas)
 
 | Position | Control | Purpose |
 |---|---|---|
 | Top-left | `CoordsBadge` | "8.5027° N · 77.1738° E" live readout |
-| Top-right | `ScaleBar` | "300 m" scale |
-| Left | `ZoomControls`, ruler, locate-me | standard MapLibre controls |
-| Bottom (above BottomBar) | **`DateTimeline`** | Horizontal date strip with cloud icons; click to switch scene |
-| Bottom-left | `CloudHiddenToast` | "Images with cloudiness over 50% have been hidden ✕" |
-| Bottom-right cluster | `SourceSwitcher` (Sentinel-2 ▾), `IndexSwitcher` (NDVI ▾), opacity icon, download icon, palette icon, **fullscreen** icon, sidebar-collapse toggle | All visualization controls |
+| Top-right (left of rail) | `ScaleBar` | "300 m" scale, hidden below `lg` |
+| Left | `ZoomControls`, `FullscreenButton` | standard MapLibre + fullscreen |
+| Bottom (centered, above tray) | **`DateTimeline`** | Horizontal scrollable date strip with cloud icons + scroll arrows + "Next: …" hint |
+| Bottom-left (above tray) | `CloudHiddenToast` | "Images with cloudiness over 50% have been hidden ✕" — auto-dismiss 8 s |
+| Bottom-right cluster | **`LayerControlCluster`** — single chip containing `SourceChip` · `IndexDropdown` (NDVI ▾) · `OpacityPopover` · palette stub · download · collapse chevron. On `<md` collapses to a `LayersIcon` puck that opens a popover with the same controls. |
 
 ### Sample sidebar pane (the only fully wired sidebar item in v2)
 - Big number: **Mean NDVI** for selected scene (map EOSDA Statistics `indexes.NDVI.average` to the UI label "Mean"; color-coded: red <0.3, yellow 0.3–0.5, green >0.5)

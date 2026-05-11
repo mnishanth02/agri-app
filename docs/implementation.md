@@ -670,13 +670,13 @@ Depends on: 1.6, 4.5.
 
 ---
 
-## Phase 5 — Analysis layout shells + map overlays
+## Phase 5 — Analysis layout shells + map overlays ✅ (completed 2026-05-12)
 
 **Goal:** `/fields/:id` shows the full-bleed analysis layout matching the reference screenshots: top bar, collapsible right sidebar, collapsible bottom bar, and all map overlay controls — even if most are visual stubs.
 
 **Phase entry:** Phases 1, 2, 3 complete. Phase 4 is **not** required for layout work.
 
-### Module 5.1 — `AnalysisLayout` shell
+### Module 5.1 — `AnalysisLayout` shell ✅ (completed 2026-05-10)
 
 Depends on: 2.3.
 
@@ -688,7 +688,7 @@ Depends on: 2.3.
 
 **Done when:** Visiting `/fields/:id` for an existing field shows the polygon centred and outlined on the satellite basemap.
 
-### Module 5.2 — `TopBar`
+### Module 5.2 — `TopBar` ✅ (completed 2026-05-10)
 
 Depends on: 5.1.
 
@@ -696,7 +696,7 @@ Depends on: 5.1.
 
 **Done when:** Visual match to reference screenshot's top bar.
 
-### Module 5.3 — `RightSidebar` (collapsible)
+### Module 5.3 — `RightSidebar` (collapsible) ✅ (completed 2026-05-10)
 
 Depends on: 5.1, 0.5 (shadcn `Sheet`/`Tabs`/`Tooltip`).
 
@@ -709,7 +709,7 @@ Depends on: 5.1, 0.5 (shadcn `Sheet`/`Tabs`/`Tooltip`).
 
 **Done when:** Click an icon → expands, shows pane title, second click collapses.
 
-### Module 5.4 — `BottomBar`
+### Module 5.4 — `BottomBar` ✅ (completed 2026-05-10)
 
 Depends on: 5.1, 0.5 (shadcn `Tabs`).
 
@@ -719,7 +719,7 @@ Depends on: 5.1, 0.5 (shadcn `Tabs`).
 
 **Done when:** Crop info tab shows real metadata for the current field; the other two render placeholders without errors.
 
-### Module 5.5 — Map overlays (visual only)
+### Module 5.5 — Map overlays (visual only) ✅ (completed 2026-05-10)
 
 Depends on: 5.1.
 
@@ -735,6 +735,59 @@ Depends on: 5.1.
 2. Mount all overlays inside `AnalysisLayout`'s `<MapView>` children.
 
 **Done when:** Visual regression vs reference screenshot lands the overlays in the correct positions; all stubs render without console errors.
+
+### Module 5.6 — UI/UX redesign: edge-anchored chrome ✅ (completed 2026-05-11)
+
+Depends on: 5.1 – 5.5. Driver: `docs/ui-ux-redesign.md`.
+
+The first-cut analysis screen used a centered "dodge" pattern (timeline + cluster + toast all repositioned with `lg:translate-x-*` when the sidebar pane opened). Module 5.6 replaces that with **edge-anchored chrome**: every chip lives in a corner or along an edge and never repositions, while persistent overlays escalate to shadcn `Sheet`s on `<md` so they stop fighting `LayerControlCluster` / `DateTimeline` for space on phones.
+
+1. Centralized visual tokens in `lib/tokens.ts` (`CHIP_BASE`, `CHIP_FOCUS`); reused across every chip + overlay. Added SSR-safe `hooks/useMediaQuery.ts` and a `components/ui/popover.tsx` primitive (wraps `radix-ui` Popover).
+2. **TopBar** trimmed to back-arrow · pin · name · area (10 × clamp width). "Get overview" CTA and "All fields ▾" hoisted out into standalone right-aligned chips `GetOverviewButton` + `FieldSwitcherChip` rendered by `AnalysisLayout`.
+3. **RightSidebar** unchanged on `md+` (rail 64 → pane 364 inline). On `<md` only the rail stays inline; the pane escalates to `<Sheet side="right">`. `PaneBody` extracted with `inSheet` prop so chip chrome is suppressed inside the sheet.
+4. **BottomBar** rebuilt as a bottom-left tray: collapsed 280 × 36 pill (tab triggers + chevron); expanded 360 × 320 panel on `md+` with `grid-cols-1 md:grid-cols-2` cards. On `<md` the expanded body opens as `<Sheet side="bottom">`.
+5. **LayerControlCluster** (new) consolidates `SourceChip` · `IndexDropdown` (replaces `IndexSwitcher`) · `OpacityPopover` (replaces always-visible `OpacitySlider`) · palette stub · download · collapse chevron into one bottom-right chip. On `<md` collapses to a `LayersIcon` puck opening a popover with the same controls. **Deleted:** `AnalysisToolbar.tsx`, `SourceSwitcher.tsx`, `IndexSwitcher.tsx`, `OpacitySlider.tsx`.
+6. **DateTimeline** rebuilt: horizontal scrollable row of 36 × 36 date chips with `ChevronLeft/Right` scroll arrows, "Next: …" hint pill, anchored `bottom-20` always (no longer repositions when the tray expands). `role="toolbar"` + `aria-orientation="horizontal"` so it announces correctly.
+7. **CloudHiddenToast** moved to `bottom-16 left-3`, shifts up to `bottom-[22rem]` when the tray expands; auto-dismisses after 8 s.
+8. **ScaleBar** repinned to `top-3 right-3` and hidden below `lg` (read-out matters on desktop, not phones).
+9. **AnalysisLayout** now positions chrome via `<div className="pointer-events-none absolute inset-0">` with edge-anchored child slots (`top-3 left-3`, `top-3 right-20`, `top-3 right-3 bottom-3`, `bottom-3 left-3`). `FitToFieldBounds` padding updated to `{ top: 64, right: 88, bottom: 96, left: 88 }`. Added a one-shot `hasInitialisedRef`-gated effect that closes any open sidebar pane on first mount when the viewport is `<lg` (responsive default; doesn't override later user toggles).
+10. Audits: `motion-safe:transition-transform` purged repo-wide; no leaks of `activeSidebarItem` truthiness outside `RightSidebar` + the layout init effect; `pnpm biome check apps/web/src` and `pnpm --filter @viz-crop/web typecheck` both clean.
+
+**Done when:** every chip uses `CHIP_BASE`/`CHIP_FOCUS`; the centered overlays no longer reposition when the sidebar pane opens; `<md` renders without overlay collisions because persistent overlays escalate to `Sheet`s; typecheck + biome are clean.
+
+### Module 5.7 — Edge-anchored chrome v2 ✅ (completed 2026-05-11)
+
+Depends on: 5.6.
+
+Field-test feedback after 5.6 led to four shifts: (1) the `_auth` header is gated off on `/fields/$id` so the map owns the full viewport (`useMatches()` against the literal route id `/_auth/fields/$id`); (2) the bottom-left `BottomBar` tray became a full-width `BottomDock` that opens upward with `Crop / Chart / Activities`, capped at `40vh` and laid out as `grid-cols-1 md:2 lg:4`; (3) `DateTimeline` (chips now `flex-1 min-w-12 max-w-20` to fill the row evenly) and `LayerControlCluster` moved into a new `BottomRow` that floats above the dock and shifts up with it; (4) `RightSidebar` rail + pane unified into a single growing chip — the outer container owns `CHIP_BASE`, the rail and pane both shed their own chip chrome, and a `border-r border-white/10` hairline plus a 150 ms cross-fade body replace the slide-in. `ZoomControls`, `FullscreenButton`, and `CloudHiddenToast` re-anchored to the left edge with `bottom` driven by `bottomBarTab`. Adversarial review (gpt-5.3-codex / gpt-5.5 / claude-opus-4.6) caught four cascading bugs that were fixed before commit: (a) `useUiStore.bottomBarTab` defaulted to `'cropInfo'` so the dock auto-opened on mount — now `null` (collapsed by default per spec V5); (b) `BottomDock`'s `min-h-[260px]` could exceed `40vh` on short viewports, breaking every dependent offset — removed; (c) `BottomRow` expanded `bottom-[calc(40vh+0.75rem)]` (literal spec value) placed it 32 px INSIDE the dock body since the dock height is `40vh + h-11`, not `40vh` — corrected to `bottom-[calc(40vh+3.5rem)]`; (d) the entire left-edge stack's expanded values were systematically off by 2 rem (failed to absorb the row's correction) — `ZoomControls`, `FullscreenButton`, `CloudHiddenToast` expanded values bumped from `+5/+12/+16rem` to `+7/+14/+18rem` so each maintains its collapsed gap above the next chip. Spec deviations remain documented: `FullscreenButton` collapsed `bottom-[14rem]` and `CloudHiddenToast` collapsed `bottom-[18rem]` instead of the spec's `bottom-[calc(7rem+52px)]` / `bottom-[7rem]` (those values overlapped the ~88 px `ZoomControls` column). The `RightSidebar` wrapper in `AnalysisLayout.tsx` was bumped from `bottom-3` to `bottom-14` so the last rail item stays clickable above the collapsed dock. `BottomBar.tsx` deleted; no remaining imports. See [`docs/ui-ux-redesign-v2.md`](./ui-ux-redesign-v2.md) for the full plan.
+
+**Done when:** `/fields/$id` renders without the `_auth` header; `BottomDock` exists as a full-width dock with `Crop / Chart / Activities`; `BottomRow` hosts `DateTimeline` (no trailing dead space) + `LayerControlCluster`; left chrome shifts up with the dock and is never covered; `RightSidebar` opens as a single chip with hairline divider; `BottomBar.tsx` is deleted; `pnpm --filter @viz-crop/web typecheck` and `pnpm biome check apps/web/src` are clean.
+
+### Module 5.8 — Drag-resizable dock + integrated timeline ✅ (completed 2026-05-12)
+
+Depends on: 5.7.
+
+Field-test feedback after 5.7: (a) "the timeline view is moving up very high" — when the dock expanded the floating `BottomRow` jumped upward by `40vh` because it was anchored to the viewport bottom and offset by `bottomBarTab !== null`, so the timeline travelled with the dock body instead of staying pinned to the dock floor; (b) "to toggle the bottom panel, the only option we have is to click the arrow in the bottom right" — the chevron was the sole toggle affordance and there was no resize handle. Two-pronged fix:
+
+1. **Lifted `DateTimeline + LayerControlCluster` INTO `BottomDock`.** They now render as a fixed `h-12` strip directly above the tab bar and below the (conditional) body, so the timeline is glued to the dock's tabs row regardless of expand state. `BottomRow.tsx` deleted; `MapOverlays.tsx` no longer imports the moved components (verified — single import path is now `BottomDock`).
+
+2. **Added a visible drag-handle pill at the dock's top edge.** Renders as a `<button type="button">` with a slim 4px visual pill inside a 24px-tall hit area (touch-friendly per WCAG target sizing). Behaviours: click → toggle expand/collapse; drag up → expand and grow the body; drag below `BOTTOM_DOCK_MIN_VH` → auto-collapse; double-click → reset to default. Keyboard: `Enter`/`Space` toggle, `ArrowUp`/`ArrowDown` resize ±5vh, `Escape` (on dock root) collapses. The button has `aria-label`, `aria-expanded`, and `aria-controls` (conditionally set only when the body is mounted, so screen readers don't reference a nonexistent element). `touch-action: none` on the grabber disables the browser's native vertical-pan gesture so finger drags actually reach our pointer handler.
+
+3. **Replaced the cascading `bottomBarTab` selector + `bottom-[calc(40vh+Nrem)]` ternaries with a single CSS variable.** `BottomDock` publishes its current outer height to `--bottom-dock-h` on `:root` via `useLayoutEffect` (synchronous so floating chrome paints in lockstep, not a frame behind). Floating consumers (`ZoomControls`, `FullscreenButton`, `CloudHiddenToast`, and the `RightSidebar` wrapper in `AnalysisLayout.tsx`) each use `style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + Nrem)' }}` and tag themselves with the `dock-bottom-anchored` utility class. A global rule in `globals.css` (`:root[data-bottom-dock-dragging='true'] .dock-bottom-anchored { transition-property: none !important }`) suppresses their `bottom` transitions for the duration of a drag — chevron-driven toggles still animate, but continuous resize is jank-free.
+
+4. **Store changes.** Added `bottomDockHeightVh: number` (default 40) and `setBottomDockHeightVh` to `useUiStore`, plus exported constants `BOTTOM_DOCK_MIN_VH = 15`, `BOTTOM_DOCK_MAX_VH = 70`, `BOTTOM_DOCK_DEFAULT_VH = 40`. The store stays dumb (no clamping) so unit tests can exercise edge values; the drag handler in `BottomDock` enforces the range. Height is per-session (no Zustand persist middleware) — acceptable for v1.
+
+Adversarial review (rubber-duck) caught five issues that were addressed before commit:
+
+- (a) **Floating chrome lagged the dock during drag** — fixed by switching the CSS-var publishing to `useLayoutEffect` and adding the `data-bottom-dock-dragging` attribute on `<html>` to suppress transitions on `.dock-bottom-anchored` consumers for the drag duration.
+- (b) **Touch drag unreliable** — added `touch-action: none` (`touch-none` Tailwind class) on the grabber so the browser doesn't claim vertical pan gestures.
+- (c) **Grabber hit target too small** — bumped from `h-3` (12px) to `h-6` (24px); the visible pill stays slim (4px) so it still reads as a grabber.
+- (d) **Large dead zone when dragging from collapsed** — when the drag starts collapsed the handler now seeds the body at `MIN_VH` on the first past-threshold move and re-anchors the pointer origin, so the body grows continuously from the cursor instead of waiting until the user has dragged ~120px.
+- (e) **Pointer-capture loss not handled** — added `onLostPointerCapture` to clear drag refs without toggling, so a stolen capture (alert / route unmount / OS focus swap) doesn't leave the dock in a stuck "dragging" state.
+
+Drag-vs-click threshold also bumped from 4px to 8px (still snappy for mouse, absorbs touch jitter). `aria-controls` is conditionally `undefined` when collapsed.
+
+**Done when:** the date timeline stays pinned to the dock floor across collapsed/expanded transitions; the user can collapse/expand the dock by clicking the visible top-edge handle (no longer dependent on the corner chevron); dragging the handle resizes the body smoothly between ~15vh and ~70vh; floating chrome (zoom / fullscreen / cloud toast / right sidebar) tracks the dock height in lockstep without lag; keyboard users can resize via `ArrowUp`/`ArrowDown`; `BottomRow.tsx` is deleted; `pnpm --filter @viz-crop/web typecheck` and `pnpm biome check apps/web/src` are clean (no new diagnostics vs baseline).
 
 ### Phase 5 exit criteria
 
@@ -968,6 +1021,14 @@ Depends on: 8.1, 8.2.
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape (de-risked) | First env with EOSDA creds | Originally a code-correctness risk: `searchScenes` would throw on missing/null `results`, misclassifying genuine no-coverage as failure. Phase 4 review fix made the wrapper lenient (missing/null → `[]`, only present-but-non-array throws), so the runtime risk is closed. Live POST against a polygon outside Sentinel-2 coverage is still a useful contract confirmation but no longer blocks Phase 4 exit. |
 | 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
+| 5.5 | Smooth out the RightSidebar pane's two stacked motion effects (width animation + slide-in-from-right) | Phase 6 polish | Final UI/UX audit (N1) flagged the brief drift between `motion-safe:transition-[width]` on the outer container and `slide-in-from-right-2 + fade-in-0` on the pane itself. Defer to Phase 6 once real pane content stops being the dominant motion noise. |
+| 5.5 | Lock IndexSwitcher per-button width via `min-w-[3.5rem]` so AnalysisToolbar doesn't jitter when Phase 6+ adds NDMI / MSAVI / SAVI | Phase 6 | Final UI/UX audit (N2). Currently NDVI / EVI / NDWI are all 3–4 chars so the bar is stable; pin widths before adding longer index names. |
+| 5.2 | Surface a visible "Back" label on the TopBar back-arrow at `sm+` so the escape route doesn't depend on tooltip discovery | Phase 6 polish | Final UI/UX audit (N3). The screen has no breadcrumb, so an explicit label improves wayfinding. |
+| 5.5 | Re-evaluate `<output>` semantics for `CloudHiddenToast` once Phase 6 wires the real cloud-coverage signal | Phase 6 | Final UI/UX audit (N4). Use `<output>` only if the chip becomes a computed-result of the active scene's cloud %; otherwise downgrade to `<div aria-live="polite">`. |
+| 5.5 | Provide a tap-revealed lat/lng readout for `< lg` viewports (CoordsBadge currently `hidden lg:inline-flex`) | Phase 6 mobile pass | Final UI/UX audit (N5). On a 12" laptop / iPad the lat/lng is invisible; revisit alongside the broader mobile collision matrix in Phase 6+. |
+| 5.5 | Tighten the gap between `ZoomControls` and `FullscreenButton` to a 4 px hairline so the left rail reads as one piece of chrome | Phase 6 polish | Final UI/UX audit (N6). Currently ~11 px sliver of map between them; could merge into one container or drop FullscreenButton's offset to `top-[calc(50%+44px)]`. |
+| 5.3 | Add a small `sr-only` "Use arrow keys to navigate the sidebar" hint near the rail so keyboard users discover the roving-tabindex pattern | Phase 6 polish | Final UI/UX audit (N7). With 12 rail buttons reachable only by Arrow keys after focusing one, the navigation pattern needs a discoverability aid. |
+| Phase 5 | Standardise "coming soon" copy + disabled-stub mechanism across `TopBar`, `BottomBar`, `RightSidebar`, `SourceSwitcher`, `DownloadButton` (all use Radix Tooltip; copy format `"<Action> coming soon…"`) | When the next stub is added or replaced | Final UI/UX audit (R5). Critical mismatch resolved (TopBar now uses Radix Tooltip + sentence case + ellipsis); remaining copy unification across in-pane "Coming soon…" placeholders can land alongside Phase 6/7 content. |
 
 ---
 
