@@ -670,7 +670,7 @@ Depends on: 1.6, 4.5.
 
 ---
 
-## Phase 5 — Analysis layout shells + map overlays ✅ (completed 2026-05-10)
+## Phase 5 — Analysis layout shells + map overlays ✅ (completed 2026-05-12)
 
 **Goal:** `/fields/:id` shows the full-bleed analysis layout matching the reference screenshots: top bar, collapsible right sidebar, collapsible bottom bar, and all map overlay controls — even if most are visual stubs.
 

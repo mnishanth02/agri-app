@@ -33,8 +33,8 @@ function RootComponent() {
       <Toaster richColors position="top-right" />
       {import.meta.env.DEV ? (
         <>
-          {/* <TanStackRouterDevtools position="bottom-right" /> */}
-          {/* <ReactQueryDevtools buttonPosition="bottom-left" /> */}
+          <TanStackRouterDevtools position="bottom-right" />
+          <ReactQueryDevtools buttonPosition="bottom-left" />
         </>
       ) : null}
     </TooltipProvider>

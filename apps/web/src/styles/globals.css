@@ -89,7 +89,6 @@
   }
 }
 
-
 /**
  * Module 5.8 - while the user is dragging the BottomDock grabber,
  * suppress the `transition-[bottom]` animations on every element
@@ -104,7 +103,7 @@
  * this one); biome's noImportantStyles is suppressed for this
  * targeted, attribute-gated override.
  */
-:root[data-bottom-dock-dragging='true'] .dock-bottom-anchored {
+:root[data-bottom-dock-dragging="true"] .dock-bottom-anchored {
   /* biome-ignore lint/complexity/noImportantStyles: needed to override Tailwind's transition utility while dragging */
   transition-property: none !important;
 }

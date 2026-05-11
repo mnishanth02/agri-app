@@ -14,6 +14,7 @@
 import type { FieldDto } from '@viz-crop/shared';
 import { XIcon } from 'lucide-react';
 import {
+  forwardRef,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
@@ -118,10 +119,9 @@ export function RightSidebar({ field }: RightSidebarProps) {
 type RailProps = {
   activeId: SidebarItem | null;
   onSelect: (id: SidebarItem, fromButton: HTMLButtonElement | null) => void;
-  ref: React.Ref<HTMLDivElement>;
 };
 
-function Rail({ activeId, onSelect, ref }: RailProps) {
+const Rail = forwardRef<HTMLDivElement, RailProps>(function Rail({ activeId, onSelect }, ref) {
   const buttonRefs = useRef<Map<SidebarItem, HTMLButtonElement | null>>(new Map());
 
   const [focusedId, setFocusedId] = useState<SidebarItem>(
@@ -210,7 +210,7 @@ function Rail({ activeId, onSelect, ref }: RailProps) {
       ))}
     </div>
   );
-}
+});
 
 type RailButtonProps = {
   item: SidebarItemConfig;

@@ -161,7 +161,7 @@ const INITIAL_STATE: UiStoreState = {
   selectedViewId: null,
   selectedIndex: 'NDVI',
   ndviOpacity: 0.75,
-  activeSidebarItem: null,
+  activeSidebarItem: 'sample',
   bottomBarTab: null,
   bottomDockHeightVh: BOTTOM_DOCK_DEFAULT_VH,
 };
