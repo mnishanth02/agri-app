@@ -54,6 +54,7 @@
  * sibling components from accidentally tearing down and recreating the map.
  */
 
+import type { RequestTransformFunction } from 'maplibre-gl';
 import { type CSSProperties, type ReactNode, useMemo, useRef } from 'react';
 import { useMapInstance } from '@/hooks/useMapInstance';
 import { MapContext, type MapContextValue } from './MapContext';
@@ -65,6 +66,15 @@ export type MapViewProps = {
   /** CSS sizing for the wrapper (height/width/etc.). NOT a MapLibre style. */
   style?: CSSProperties;
   className?: string;
+  /**
+   * MapLibre `transformRequest` configured at construction time. Module 6.4
+   * passes a memoised closure that captures a Clerk-token ref so EOSDA
+   * render-tile URLs gain `Authorization: Bearer ...` without re-creating
+   * the map. Like `center` / `zoom`, this is snapshotted by `useMapInstance`
+   * — pass a stable reference (e.g. via `useMemo`) and capture mutable
+   * state through refs.
+   */
+  transformRequest?: RequestTransformFunction;
 };
 
 function omitPositionStyles(style: CSSProperties | undefined): CSSProperties {
@@ -78,11 +88,24 @@ function omitPositionStyles(style: CSSProperties | undefined): CSSProperties {
   return safeStyle;
 }
 
-export function MapView({ center, zoom, children, style, className }: MapViewProps) {
+export function MapView({
+  center,
+  zoom,
+  children,
+  style,
+  className,
+  transformRequest,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { map, isReady, isStyleReady, styleEpoch } = useMapInstance(containerRef, {
     center,
     zoom,
+    // Conditional spread so `transformRequest: undefined` is never set
+    // explicitly — `useMapInstance`'s options type uses
+    // `exactOptionalPropertyTypes`, which rejects an explicit `undefined`
+    // for an optional property. The hook supplies its own passthrough
+    // default when the key is absent.
+    ...(transformRequest ? { transformRequest } : {}),
   });
   const safeStyle = omitPositionStyles(style);
 

@@ -456,7 +456,7 @@ export function BottomDock({ field }: BottomDockProps) {
               cluster on wide viewports; hidden on `<md`. */}
           <div aria-hidden="true" className="hidden w-10 md:block" />
           <div className="flex min-w-0 flex-1 justify-center">
-            <DateTimeline />
+            <DateTimeline fieldId={field.id} />
           </div>
           <div className="shrink-0">
             <LayerControlCluster />

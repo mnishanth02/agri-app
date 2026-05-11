@@ -33,17 +33,22 @@
 
 import bbox from '@turf/bbox';
 import type { FieldDto } from '@viz-crop/shared';
+import type { RequestTransformFunction } from 'maplibre-gl';
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { BasemapLayer } from '@/components/map/BasemapLayer';
 import { FieldLayer } from '@/components/map/FieldLayer';
 import { useMapContext } from '@/components/map/MapContext';
 import { MapView } from '@/components/map/MapView';
+import { NdviLayer } from '@/components/map/NdviLayer';
 import { MapOverlays } from '@/components/map/overlays/MapOverlays';
 import { BottomDock } from '@/components/shell/BottomDock';
 import { FieldSwitcherChip } from '@/components/shell/FieldSwitcherChip';
 import { GetOverviewButton } from '@/components/shell/GetOverviewButton';
 import { RightSidebar } from '@/components/shell/RightSidebar';
 import { TopBar } from '@/components/shell/TopBar';
+import { env } from '@/env';
+import { useAutoSelectDefaultScene } from '@/hooks/useAutoSelectDefaultScene';
+import { useClerkTokenRef } from '@/hooks/useClerkTokenRef';
 import { useUiStore } from '@/stores/useUiStore';
 
 const INITIAL_ZOOM = 14;
@@ -56,6 +61,38 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
   const setActiveSidebarItem = useUiStore((s) => s.setActiveSidebarItem);
   const hasInitialisedRef = useRef(false);
 
+  // Module 6.4 prerequisite — keep a fresh Clerk JWT in a ref so the
+  // `transformRequest` closure (snapshotted by `useMapInstance`) can read
+  // the latest token per tile request without re-creating the map.
+  // `isAuthReady` is threaded into `<NdviLayer>` so its raster source
+  // never mounts before the first token resolves (would emit 401s).
+  const { ref: tokenRef, isReady: isAuthReady } = useClerkTokenRef();
+
+  // Stable, render-tile-only auth injector. Memoised so the map is built
+  // exactly once: `tokenRef` is identity-stable across renders (refs
+  // don't change), and the prefix only depends on the env URL. Reading
+  // `tokenRef.current` inside the closure picks up rotations.
+  const transformRequest = useMemo<RequestTransformFunction>(() => {
+    const renderTilePrefix = `${env.VITE_API_BASE_URL.replace(/\/+$/, '')}/api/eosda/render/`;
+    return (url) => {
+      if (!url.startsWith(renderTilePrefix)) {
+        return { url };
+      }
+      const token = tokenRef.current;
+      if (!token) {
+        // Defence-in-depth: <NdviLayer> gates source creation on
+        // `isAuthReady`, so this branch should be unreachable in
+        // practice. Returning the bare URL is safer than synthesising
+        // an empty Bearer header that the API would 401 on.
+        return { url };
+      }
+      return {
+        url,
+        headers: { Authorization: `Bearer ${token}` },
+      };
+    };
+  }, [tokenRef]);
+
   // D3 — one-shot initial paint: collapse the sidebar on narrow viewports
   // so the map is the hero. After this fires the user owns the state.
   useEffect(() => {
@@ -65,6 +102,12 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
     const isNarrow = window.matchMedia('(max-width: 1023px)').matches;
     if (isNarrow) setActiveSidebarItem(null);
   }, [setActiveSidebarItem]);
+
+  // Module 6.2 — auto-select a sensible default scene whenever the
+  // field changes or scenes finish loading. The hook subscribes to
+  // `useEosdaScenes(field.id)` and only writes to the UI store when
+  // the current selection is missing or invalid for this field.
+  useAutoSelectDefaultScene(field.id);
 
   const fieldTitleId = useId();
 
@@ -81,8 +124,14 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
       aria-labelledby={fieldTitleId}
       className="relative h-dvh w-full overflow-hidden bg-black"
     >
-      <MapView center={center} zoom={INITIAL_ZOOM} className="h-full w-full">
+      <MapView
+        center={center}
+        zoom={INITIAL_ZOOM}
+        className="h-full w-full"
+        transformRequest={transformRequest}
+      >
         <BasemapLayer />
+        <NdviLayer fieldId={field.id} isAuthReady={isAuthReady} />
         <FieldLayer polygon={field.geometry} />
         <FitToFieldBounds bounds={bounds} />
 
@@ -99,7 +148,7 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
           </div>
 
           {/* left middle: scale bar, coords, zoom column, cloud toast */}
-          <MapOverlays />
+          <MapOverlays fieldId={field.id} />
 
           {/* right edge — single growing chip (rail + optional inline pane on md+).
               `bottom` reads the `--bottom-dock-h` CSS variable that

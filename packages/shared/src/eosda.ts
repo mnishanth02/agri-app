@@ -57,3 +57,45 @@ export const ndviStatsDto = z.object({
 });
 
 export type NdviStatsDto = z.infer<typeof ndviStatsDto>;
+
+/**
+ * Request body for `POST /api/eosda/scenes` (Module 6.1).
+ *
+ * `dateRange.from`/`to` are inclusive `YYYY-MM-DD` strings filtered against
+ * `cached_scenes.scene_date`. Both bounds are optional — the route fills in
+ * a default `[today − 90d, today]` window when omitted, matching the
+ * Sentinel-2 cadence used by the analysis timeline.
+ *
+ * `forceRefresh: true` skips the freshness check entirely and forces an
+ * EOSDA Search round-trip even if the cache is fully populated. Useful for
+ * a "refresh" button or after the user changes their date filter and wants
+ * to be sure they've seen every scene EOSDA knows about.
+ *
+ * Date strings (not datetimes) — `cached_scenes.scene_date` is a PostgreSQL
+ * `date` column, and the rest of the EOSDA wrappers (`searchScenes`,
+ * `dateRangeForWindow`) all consume `YYYY-MM-DD`. Keeping the wire format
+ * symmetric avoids per-route timezone normalisation.
+ */
+export const eosdaScenesRequest = z.object({
+  fieldId: z.uuid(),
+  dateRange: z
+    .object({
+      from: isoDate.optional(),
+      to: isoDate.optional(),
+    })
+    .optional(),
+  forceRefresh: z.boolean().optional(),
+});
+
+export type EosdaScenesRequest = z.infer<typeof eosdaScenesRequest>;
+
+/**
+ * Response shape for `POST /api/eosda/scenes`. Scenes are ordered
+ * newest-first by `sceneDate`, then by `viewId` for a deterministic tie
+ * break (mirrors the order produced by `listScenesForApi`).
+ */
+export const eosdaScenesResponse = z.object({
+  scenes: z.array(sceneDto),
+});
+
+export type EosdaScenesResponse = z.infer<typeof eosdaScenesResponse>;

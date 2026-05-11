@@ -44,6 +44,38 @@ import { type Db, db as sharedDb } from '../db/client.js';
 import { cachedScenes } from '../db/schema.js';
 import type { SceneDto } from './eosda-search.js';
 
+/**
+ * Wire-shaped projection of a `cached_scenes` row used by the API surface
+ * (`listScenesForApi` → `POST /api/eosda/scenes`).
+ *
+ * Distinct from the internal `SceneDto` (`./eosda-search.js`) which mirrors
+ * EOSDA's Search shape and is consumed by the warm-up service. The wire DTO
+ * adds the row identity (`id`, `fieldId`), the `source` discriminator, and
+ * `createdAt`, all of which are required by the shared `sceneDto` zod that
+ * validates the response on the client side.
+ *
+ * Numeric columns surface as PostgreSQL `numeric` strings via node-postgres;
+ * we leave them as strings here and let the shared `sceneDto`'s
+ * `z.coerce.number()` widen them to `number | null` at the boundary. Doing
+ * the coercion here would duplicate the contract and risk drift if the
+ * shared schema ever tightens precision.
+ *
+ * `tmsTemplate` is included for parity with the shared DTO but is metadata
+ * only — Phase 6 tile fetches go through the `/api/eosda/render/...`
+ * proxy (Module 6.3), not this URL.
+ */
+export interface SceneApiRow {
+  id: string;
+  fieldId: string;
+  viewId: string;
+  source: string;
+  sceneDate: string;
+  cloudPercent: string | null;
+  dataCoveragePercent: string | null;
+  tmsTemplate: string | null;
+  createdAt: Date;
+}
+
 export interface SceneCacheOptions {
   /**
    * Drizzle handle. Defaults to the process-wide `sharedDb`. Inside
@@ -297,4 +329,71 @@ export async function getMostRecentScene(
 
   const row = rows[0];
   return row ? rowToSceneDto(row) : null;
+}
+
+/**
+ * Wire-shape projection of `cached_scenes`. Distinct from `sceneSelect`
+ * (which feeds the internal `SceneDto`) — this adds `id`, `fieldId`,
+ * `source`, and `createdAt` to satisfy the shared `sceneDto` zod consumed
+ * by the client. `lastSeenAt` is selected alongside but stripped from the
+ * returned row; the route uses it to compute the freshness window.
+ */
+const sceneApiSelect = {
+  id: cachedScenes.id,
+  fieldId: cachedScenes.fieldId,
+  viewId: cachedScenes.viewId,
+  source: cachedScenes.source,
+  sceneDate: cachedScenes.sceneDate,
+  cloudPercent: cachedScenes.cloudPercent,
+  dataCoveragePercent: cachedScenes.dataCoveragePercent,
+  tmsTemplate: cachedScenes.tmsTemplate,
+  createdAt: cachedScenes.createdAt,
+  lastSeenAt: cachedScenes.lastSeenAt,
+};
+
+/**
+ * Read scenes for the public API surface (`POST /api/eosda/scenes`,
+ * Module 6.1).
+ *
+ * Returns rows projected into `SceneApiRow` (the wire shape that satisfies
+ * the shared `sceneDto` zod after `z.coerce.number()` runs on numeric
+ * columns) ordered newest-first by `sceneDate`, with `viewId` as a stable
+ * tie-breaker. Filters use the same `isCompleteSceneRow()` guard as
+ * `listScenes` so partially-populated rows (where `view_id`/`scene_date`
+ * is NULL or `tms_template`/`cloud_percent` would render unusable) are
+ * never surfaced to the UI.
+ *
+ * Also returns `newestLastSeenAt`: the largest `last_seen_at` among rows
+ * matching the query, or `null` when the result is empty. The route uses
+ * this as the freshness signal — when it is older than the TTL (or null),
+ * the route re-runs EOSDA Search and upserts.
+ */
+export async function listScenesForApi(
+  fieldId: string,
+  options: ListScenesOptions = {},
+): Promise<{ scenes: SceneApiRow[]; newestLastSeenAt: Date | null }> {
+  const { db = sharedDb, dateRange } = options;
+
+  const conditions = [eq(cachedScenes.fieldId, fieldId), isCompleteSceneRow()];
+  if (dateRange?.from) conditions.push(gte(cachedScenes.sceneDate, dateRange.from));
+  if (dateRange?.to) conditions.push(lte(cachedScenes.sceneDate, dateRange.to));
+
+  const rows = await db
+    .select(sceneApiSelect)
+    .from(cachedScenes)
+    .where(and(...conditions))
+    .orderBy(desc(cachedScenes.sceneDate), desc(cachedScenes.viewId));
+
+  let newestLastSeenAt: Date | null = null;
+  const scenes: SceneApiRow[] = rows.map(({ lastSeenAt, ...rest }) => {
+    // `lastSeenAt` defaults to `now()` and the column is NOT NULL at the
+    // schema level, so the !== null guard is defensive (a future schema
+    // change that relaxes the constraint shouldn't crash the route).
+    if (lastSeenAt !== null && (newestLastSeenAt === null || lastSeenAt > newestLastSeenAt)) {
+      newestLastSeenAt = lastSeenAt;
+    }
+    return rest;
+  });
+
+  return { scenes, newestLastSeenAt };
 }
