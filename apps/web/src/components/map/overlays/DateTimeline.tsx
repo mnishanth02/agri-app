@@ -5,10 +5,11 @@
  * hint at the right. Phase 6 wires this to real Sentinel-2 scenes from
  * `useEosdaScenes(fieldId)`; until then the chips are placeholders.
  *
- * Position is owned by the parent `BottomRow` — this component renders
- * a width-flexible chip and contributes no positioning of its own. The
- * chip claims the row's centre slot (`flex-1`) up to a `900px` cap so
- * it doesn't crowd the layer cluster on wide viewports.
+ * Position is owned by the parent strip inside `BottomDock` (Module
+ * 5.8 — was `BottomRow` in 5.7); this component renders a
+ * width-flexible chip and contributes no positioning of its own. The
+ * chip claims the strip's centre slot (`flex-1`) up to a `900px` cap
+ * so it doesn't crowd the layer cluster on wide viewports.
  */
 
 import { ChevronLeftIcon, ChevronRightIcon, CloudIcon } from 'lucide-react';

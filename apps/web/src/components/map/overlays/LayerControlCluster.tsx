@@ -139,9 +139,9 @@ export function LayerControlCluster() {
   };
 
   // Below `md` the expanded body lives inside a `Popover`; on `md+` it
-  // sits inline next to the puck. Module 5.7: positioning is owned by
-  // the parent `BottomRow` — this component returns the chip / puck
-  // directly.
+  // sits inline next to the puck. Module 5.8: positioning is owned by
+  // the parent strip inside `BottomDock` (was `BottomRow` in 5.7) —
+  // this component returns the chip / puck directly.
   if (!isMd) {
     return (
       <Popover>

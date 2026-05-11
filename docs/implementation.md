@@ -763,6 +763,32 @@ Field-test feedback after 5.6 led to four shifts: (1) the `_auth` header is gate
 
 **Done when:** `/fields/$id` renders without the `_auth` header; `BottomDock` exists as a full-width dock with `Crop / Chart / Activities`; `BottomRow` hosts `DateTimeline` (no trailing dead space) + `LayerControlCluster`; left chrome shifts up with the dock and is never covered; `RightSidebar` opens as a single chip with hairline divider; `BottomBar.tsx` is deleted; `pnpm --filter @viz-crop/web typecheck` and `pnpm biome check apps/web/src` are clean.
 
+### Module 5.8 — Drag-resizable dock + integrated timeline ✅ (completed 2026-05-12)
+
+Depends on: 5.7.
+
+Field-test feedback after 5.7: (a) "the timeline view is moving up very high" — when the dock expanded the floating `BottomRow` jumped upward by `40vh` because it was anchored to the viewport bottom and offset by `bottomBarTab !== null`, so the timeline travelled with the dock body instead of staying pinned to the dock floor; (b) "to toggle the bottom panel, the only option we have is to click the arrow in the bottom right" — the chevron was the sole toggle affordance and there was no resize handle. Two-pronged fix:
+
+1. **Lifted `DateTimeline + LayerControlCluster` INTO `BottomDock`.** They now render as a fixed `h-12` strip directly above the tab bar and below the (conditional) body, so the timeline is glued to the dock's tabs row regardless of expand state. `BottomRow.tsx` deleted; `MapOverlays.tsx` no longer imports the moved components (verified — single import path is now `BottomDock`).
+
+2. **Added a visible drag-handle pill at the dock's top edge.** Renders as a `<button type="button">` with a slim 4px visual pill inside a 24px-tall hit area (touch-friendly per WCAG target sizing). Behaviours: click → toggle expand/collapse; drag up → expand and grow the body; drag below `BOTTOM_DOCK_MIN_VH` → auto-collapse; double-click → reset to default. Keyboard: `Enter`/`Space` toggle, `ArrowUp`/`ArrowDown` resize ±5vh, `Escape` (on dock root) collapses. The button has `aria-label`, `aria-expanded`, and `aria-controls` (conditionally set only when the body is mounted, so screen readers don't reference a nonexistent element). `touch-action: none` on the grabber disables the browser's native vertical-pan gesture so finger drags actually reach our pointer handler.
+
+3. **Replaced the cascading `bottomBarTab` selector + `bottom-[calc(40vh+Nrem)]` ternaries with a single CSS variable.** `BottomDock` publishes its current outer height to `--bottom-dock-h` on `:root` via `useLayoutEffect` (synchronous so floating chrome paints in lockstep, not a frame behind). Floating consumers (`ZoomControls`, `FullscreenButton`, `CloudHiddenToast`, and the `RightSidebar` wrapper in `AnalysisLayout.tsx`) each use `style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + Nrem)' }}` and tag themselves with the `dock-bottom-anchored` utility class. A global rule in `globals.css` (`:root[data-bottom-dock-dragging='true'] .dock-bottom-anchored { transition-property: none !important }`) suppresses their `bottom` transitions for the duration of a drag — chevron-driven toggles still animate, but continuous resize is jank-free.
+
+4. **Store changes.** Added `bottomDockHeightVh: number` (default 40) and `setBottomDockHeightVh` to `useUiStore`, plus exported constants `BOTTOM_DOCK_MIN_VH = 15`, `BOTTOM_DOCK_MAX_VH = 70`, `BOTTOM_DOCK_DEFAULT_VH = 40`. The store stays dumb (no clamping) so unit tests can exercise edge values; the drag handler in `BottomDock` enforces the range. Height is per-session (no Zustand persist middleware) — acceptable for v1.
+
+Adversarial review (rubber-duck) caught five issues that were addressed before commit:
+
+- (a) **Floating chrome lagged the dock during drag** — fixed by switching the CSS-var publishing to `useLayoutEffect` and adding the `data-bottom-dock-dragging` attribute on `<html>` to suppress transitions on `.dock-bottom-anchored` consumers for the drag duration.
+- (b) **Touch drag unreliable** — added `touch-action: none` (`touch-none` Tailwind class) on the grabber so the browser doesn't claim vertical pan gestures.
+- (c) **Grabber hit target too small** — bumped from `h-3` (12px) to `h-6` (24px); the visible pill stays slim (4px) so it still reads as a grabber.
+- (d) **Large dead zone when dragging from collapsed** — when the drag starts collapsed the handler now seeds the body at `MIN_VH` on the first past-threshold move and re-anchors the pointer origin, so the body grows continuously from the cursor instead of waiting until the user has dragged ~120px.
+- (e) **Pointer-capture loss not handled** — added `onLostPointerCapture` to clear drag refs without toggling, so a stolen capture (alert / route unmount / OS focus swap) doesn't leave the dock in a stuck "dragging" state.
+
+Drag-vs-click threshold also bumped from 4px to 8px (still snappy for mouse, absorbs touch jitter). `aria-controls` is conditionally `undefined` when collapsed.
+
+**Done when:** the date timeline stays pinned to the dock floor across collapsed/expanded transitions; the user can collapse/expand the dock by clicking the visible top-edge handle (no longer dependent on the corner chevron); dragging the handle resizes the body smoothly between ~15vh and ~70vh; floating chrome (zoom / fullscreen / cloud toast / right sidebar) tracks the dock height in lockstep without lag; keyboard users can resize via `ArrowUp`/`ArrowDown`; `BottomRow.tsx` is deleted; `pnpm --filter @viz-crop/web typecheck` and `pnpm biome check apps/web/src` are clean (no new diagnostics vs baseline).
+
 ### Phase 5 exit criteria
 
 - `/fields/:id` renders the full layout with the polygon visible.

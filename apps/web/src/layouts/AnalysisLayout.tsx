@@ -11,14 +11,17 @@
  *
  * Top-left: `TopBar` chip · Top-right: `GetOverviewButton` +
  * `FieldSwitcherChip` · Left edge: `ZoomControls` + `FullscreenButton`
- * + `CloudHiddenToast` (stacked, `bottom` driven by `bottomBarTab`) ·
- * Right edge: `RightSidebar` (single growing chip, rail + optional
- * inline pane on md+) · Bottom: `BottomDock` (full-width dock, expands
- * upward) and `BottomRow` (timeline centred + layer cluster right,
- * shifts up with the dock).
+ * + `CloudHiddenToast` (stacked, `bottom` driven by the
+ * `--bottom-dock-h` CSS variable) · Right edge: `RightSidebar` (single
+ * growing chip, rail + optional inline pane on md+) · Bottom:
+ * `BottomDock` (full-width drag-resizable dock, hosts the date
+ * timeline + layer cluster directly above its tab bar so they stay
+ * pinned to the dock edge regardless of expand state — Module 5.8).
  *
- * Nothing dodges the right pane; the dock + row + left chrome all
- * animate `bottom` together when `bottomBarTab` toggles.
+ * Nothing dodges the right pane; the dock + left chrome + sidebar
+ * wrapper all read the same CSS variable so they reposition smoothly
+ * (and live, while the user drags) without per-component selector
+ * subscriptions.
  *
  * ## Responsive default (D3)
  *
@@ -37,7 +40,6 @@ import { useMapContext } from '@/components/map/MapContext';
 import { MapView } from '@/components/map/MapView';
 import { MapOverlays } from '@/components/map/overlays/MapOverlays';
 import { BottomDock } from '@/components/shell/BottomDock';
-import { BottomRow } from '@/components/shell/BottomRow';
 import { FieldSwitcherChip } from '@/components/shell/FieldSwitcherChip';
 import { GetOverviewButton } from '@/components/shell/GetOverviewButton';
 import { RightSidebar } from '@/components/shell/RightSidebar';
@@ -100,18 +102,22 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
           <MapOverlays />
 
           {/* right edge — single growing chip (rail + optional inline pane on md+).
-              `bottom-14` clears the collapsed BottomDock header (`h-11`) so the
-              last rail item stays clickable. When the dock expands the dock's
-              body (40vh) overlays the lower portion of the rail; the rail is
-              scrollable so users can still reach all items, or collapse the dock. */}
-          <div className="pointer-events-auto absolute top-3 right-3 bottom-14">
+              `bottom` reads the `--bottom-dock-h` CSS variable that
+              `BottomDock` publishes, so the rail tracks the dock's
+              current height (collapsed, expanded, or mid-drag) without
+              its own subscription. The fallback (`7.5rem`) covers the
+              first paint before `BottomDock` has mounted its effect. */}
+          <div
+            className="dock-bottom-anchored pointer-events-auto absolute top-3 right-3 motion-safe:transition-[bottom] motion-safe:duration-200"
+            style={{ bottom: 'calc(var(--bottom-dock-h, 7.5rem) + 0.75rem)' }}
+          >
             <RightSidebar field={field} />
           </div>
 
-          {/* bottom — full-width dock + floating row above it. Both
-              self-position via fixed/absolute classes and animate
-              `bottom` in lockstep with the left-edge chrome. */}
-          <BottomRow />
+          {/* bottom — full-width drag-resizable dock. Hosts the date
+              timeline + layer cluster strip directly above its tab
+              bar (Module 5.8) so they remain pinned to the dock
+              regardless of expand state. */}
           <BottomDock field={field} />
         </div>
       </MapView>
@@ -138,12 +144,13 @@ function FitToFieldBounds({ bounds }: { bounds: [number, number, number, number]
     // Padding clears the new edge-anchored chrome envelope:
     // - top 24 = no header, only the `top-3` chip envelope.
     // - right 96 = 64 px rail + 12 + 12 + 8 px breathing.
-    // - bottom 132 = 44 px dock header + 40 px row + 12 px gap × 2 + 24 px safety.
-    //   Sized for the collapsed dock; expansion is short and the user
-    //   already knows their polygon.
+    // - bottom 152 = collapsed dock total (~120 px = 24 px handle +
+    //   48 px timeline strip + 44 px tab bar + ~4 px borders) + 32 px
+    //   safety. Sized for the collapsed dock; expansion is short and
+    //   the user already knows their polygon.
     // - left 96 = symmetric with right; clears the 40 px zoom column.
     map.fitBounds(bounds, {
-      padding: { top: 24, right: 96, bottom: 132, left: 96 },
+      padding: { top: 24, right: 96, bottom: 152, left: 96 },
       animate: false,
       maxZoom: 17,
     });
