@@ -65,8 +65,13 @@ export function useClerkTokenRef(): UseClerkTokenRefResult {
       try {
         const token = await getToken();
         if (cancelled) return;
+        if (!token) {
+          if (!ref.current) setIsReady(false);
+          console.warn('[useClerkTokenRef] token refresh returned null; keeping previous token');
+          return;
+        }
         ref.current = token;
-        if (token) setIsReady(true);
+        setIsReady(true);
       } catch (err) {
         if (cancelled) return;
         // Transient failure (network blip, Clerk degraded). Keep the

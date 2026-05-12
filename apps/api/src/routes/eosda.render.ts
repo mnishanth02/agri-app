@@ -48,6 +48,8 @@ const COLOR_DEFAULTS = {
   NDWI: { COLORMAP: 'Blues', MIN_MAX: '-1,1' },
 } as const satisfies Record<string, { COLORMAP: string; MIN_MAX: string }>;
 
+const LAZY_CROPPER_HEAL_TIMEOUT_MS = 30_000;
+
 type Band = keyof typeof COLOR_DEFAULTS;
 
 /**
@@ -156,7 +158,7 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
       // condition, but skipping the call entirely avoids the import
       // cost in the hot path.
       if (row.eosdaCropperRef) return;
-      await getOrCreateCropperRef(
+      const cropperPromise = getOrCreateCropperRef(
         {
           id: row.id,
           geometry: row.geometry as PolygonGeoJson,
@@ -164,6 +166,30 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
         },
         { db, log },
       );
+
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timeoutTimer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
+        // Do not keep the Node process alive solely for this background heal timeout.
+        timeoutTimer.unref();
+      });
+      try {
+        // A timeout only releases the in-process dedupe gate; the original
+        // cropper request may still complete and persist the ref in the
+        // background, which is safe and avoids wasting successful EOSDA work.
+        const outcome = await Promise.race([
+          cropperPromise.then(() => 'settled' as const),
+          timeout,
+        ]);
+        if (outcome === 'timeout') {
+          log.warn(
+            { fieldId, timeoutMs: LAZY_CROPPER_HEAL_TIMEOUT_MS },
+            'render: lazy cropper-ref heal still pending after timeout; allowing future retry',
+          );
+        }
+      } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+      }
     } catch (err) {
       log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
     } finally {
