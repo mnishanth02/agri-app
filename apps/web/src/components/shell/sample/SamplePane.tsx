@@ -244,9 +244,28 @@ function pickStatsRow(
 ): NdviStatsDto | null {
   if (selectedViewId === null) return null;
   for (const row of stats) {
-    if (row.viewId === selectedViewId && row.indexName === selectedIndex) return row;
+    if (row.viewId === selectedViewId && row.indexName === selectedIndex) {
+      // Tombstone rows (every scalar is null because mt_stats returned
+      // no usable pixels for this scene — typically 100 % cloud) are
+      // intentionally NOT rendered as a "row" to the user; the empty
+      // state explains *why* there are no numbers instead of showing
+      // a wall of em-dashes that look like a load failure.
+      if (isTombstoneRow(row)) return null;
+      return row;
+    }
   }
   return null;
+}
+
+function isTombstoneRow(row: NdviStatsDto): boolean {
+  return (
+    row.mean === null &&
+    row.min === null &&
+    row.max === null &&
+    row.p10 === null &&
+    row.p90 === null &&
+    row.median === null
+  );
 }
 
 function formatScalar(value: number | null): string {

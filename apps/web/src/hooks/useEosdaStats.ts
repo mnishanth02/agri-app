@@ -63,7 +63,7 @@ import {
   eosdaStatsResponse,
   type VegetationIndex,
 } from '@viz-crop/shared';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { ApiError, apiFetch } from '@/lib/api';
 import { eosdaKeys, useEosdaScenes } from './useEosdaScenes';
@@ -97,6 +97,16 @@ function is504(err: unknown): boolean {
 }
 
 /**
+ * Module-level dedupe map shared across every `useEosdaStats` call
+ * site so that when SamplePane and NdviChart both subscribe to the
+ * same query — and both their toast effects fire on the same terminal
+ * failure — the user only sees one toast. Keyed by the stringified
+ * query key so concurrent stats queries for different fields/indexes
+ * still each get their own toast.
+ */
+const lastToastedFailureCountByKey = new Map<string, number>();
+
+/**
  * `POST /api/eosda/stats` — read-or-compute NDVI/EVI/NDWI zonal
  * statistics for one of the caller's fields. See module-header docblock
  * for cache, retry, and race semantics.
@@ -107,8 +117,9 @@ export function useEosdaStats(args: UseEosdaStatsArgs): UseQueryResult<EosdaStat
 
   const scenesQuery = useEosdaScenes(fieldId);
 
+  const queryKey = statsKey(fieldId, indexes);
   const query = useQuery({
-    queryKey: statsKey(fieldId, indexes),
+    queryKey,
     queryFn: async ({ signal }) => {
       const body: EosdaStatsRequest = { fieldId, indexes };
       const data = await apiFetch<unknown>('/api/eosda/stats', {
@@ -134,28 +145,32 @@ export function useEosdaStats(args: UseEosdaStatsArgs): UseQueryResult<EosdaStat
       is504(error) ? RETRY_DELAY_MS_504 : Math.min(1000 * 2 ** attemptIndex, 30_000),
   });
 
-  // Toast once per terminal failure. v5 has no `onError` on useQuery,
-  // so this effect is the documented escape hatch. We compare against
-  // the failureCount snapshot at toast time so a successful refetch
-  // followed by a NEW error fires a fresh toast (TanStack resets the
-  // failureCount counter on every successful fetch).
-  const lastToastedFailureCountRef = useRef<number>(0);
+  // Toast once per terminal failure across ALL subscribers of this
+  // query key. v5 has no `onError` on useQuery, and a per-component
+  // `useRef` guard fires once per *component* — meaning when both
+  // SamplePane and NdviChart subscribe to the same query the user
+  // sees two identical toasts. We dedupe via a module-level Map keyed
+  // by the stringified query key (which is safe — different fields /
+  // indexes get different keys, and identical keys really should
+  // dedupe). The map entry is reset after a successful fetch.
+  const queryKeyHash = JSON.stringify(queryKey);
   const error = query.error;
   const isError = query.isError;
   const isFetching = query.isFetching;
   const failureCount = query.failureCount;
   useEffect(() => {
-    if (isError && !isFetching && error && failureCount > lastToastedFailureCountRef.current) {
-      lastToastedFailureCountRef.current = failureCount;
+    const lastToasted = lastToastedFailureCountByKey.get(queryKeyHash) ?? 0;
+    if (isError && !isFetching && error && failureCount > lastToasted) {
+      lastToastedFailureCountByKey.set(queryKeyHash, failureCount);
       const message = is504(error)
         ? 'Statistics took too long to compute. Please try again in a moment.'
         : ((error as Error).message ?? 'Failed to load statistics.');
       toast.error(message);
     }
     if (!isError) {
-      lastToastedFailureCountRef.current = 0;
+      lastToastedFailureCountByKey.delete(queryKeyHash);
     }
-  }, [isError, isFetching, error, failureCount]);
+  }, [isError, isFetching, error, failureCount, queryKeyHash]);
 
   return query;
 }

@@ -958,7 +958,7 @@ Verification only — no code changes. Confirmed:
 
 ---
 
-## Phase 7 — Statistics + Sample pane + Chart tab
+## Phase 7 — Statistics + Sample pane + Chart tab ✅ (completed 2026-05-12)
 
 **Goal:** The Sample sidebar pane shows real NDVI statistics (Mean/p10/p90/median + cloud/data-coverage confidence). The Chart tab plots Mean NDVI across cached scenes.
 
@@ -1111,6 +1111,7 @@ Depends on: 8.1, 8.2.
 | 5.5 | Smooth out the RightSidebar pane's two stacked motion effects (width animation + slide-in-from-right) | Phase 6 polish | Final UI/UX audit (N1) flagged the brief drift between `motion-safe:transition-[width]` on the outer container and `slide-in-from-right-2 + fade-in-0` on the pane itself. Defer to Phase 6 once real pane content stops being the dominant motion noise. |
 | 5.5 | Lock IndexSwitcher per-button width via `min-w-[3.5rem]` so AnalysisToolbar doesn't jitter when Phase 6+ adds NDMI / MSAVI / SAVI | Phase 6 | Final UI/UX audit (N2). Currently NDVI / EVI / NDWI are all 3–4 chars so the bar is stable; pin widths before adding longer index names. |
 | 5.2 | Surface a visible "Back" label on the TopBar back-arrow at `sm+` so the escape route doesn't depend on tooltip discovery | Phase 6 polish | Final UI/UX audit (N3). The screen has no breadcrumb, so an explicit label improves wayfinding. |
+| 7.1 | Persist + resume the EOSDA `mt_stats` `taskId` when the route 504s so the client-side retry can re-poll the original task instead of creating a new one | Future EOSDA-cost-tuning pass (Phase 8.1 or later) | Today, when `runMtStats` exceeds its 60 s deadline the route logs the `taskId` and surfaces `STATS_TIMEOUT`. The `useEosdaStats` 10 s retry then issues a fresh POST, which `runMtStats` runs as a brand-new mt_stats task — doubling EOSDA quota cost on slow tasks. Final phase-7 GPT-5.5 review flagged this. Fix path: stash the `taskId` (e.g. in a small `pending_stats_tasks` table keyed by `referenceId`) on timeout, then on retry have `runMtStats` look it up and resume polling instead of creating a new task. |
 | 5.5 | Provide a tap-revealed lat/lng readout for `< lg` viewports (CoordsBadge currently `hidden lg:inline-flex`) | Phase 6 mobile pass | Final UI/UX audit (N5). On a 12" laptop / iPad the lat/lng is invisible; revisit alongside the broader mobile collision matrix in Phase 6+. |
 | 5.5 | Tighten the gap between `ZoomControls` and `FullscreenButton` to a 4 px hairline so the left rail reads as one piece of chrome | Phase 6 polish | Final UI/UX audit (N6). Currently ~11 px sliver of map between them; could merge into one container or drop FullscreenButton's offset to `top-[calc(50%+44px)]`. |
 | 5.3 | Add a small `sr-only` "Use arrow keys to navigate the sidebar" hint near the rail so keyboard users discover the roving-tabindex pattern | Phase 6 polish | Final UI/UX audit (N7). With 12 rail buttons reachable only by Arrow keys after focusing one, the navigation pattern needs a discoverability aid. |
