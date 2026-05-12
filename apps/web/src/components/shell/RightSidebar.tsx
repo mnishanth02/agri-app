@@ -28,6 +28,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { type SidebarItem, useUiStore } from '@/stores/useUiStore';
+import { SamplePane } from './sample/SamplePane';
 import { getSidebarItem, SIDEBAR_ITEMS, type SidebarItemConfig } from './sidebar-items';
 
 const PANE_ID = 'sidebar-pane';
@@ -319,30 +320,12 @@ function PaneBody({ field, config, onClose, inSheet = false }: PaneBodyProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
         {config.id === 'sample' ? (
-          <SamplePanePlaceholder field={field} />
+          <SamplePane field={field} />
         ) : (
           <ComingSoonPlaceholder config={config} />
         )}
       </div>
     </aside>
-  );
-}
-
-function SamplePanePlaceholder({ field }: { field: FieldDto }) {
-  return (
-    <section data-pane="sample" aria-label="NDVI sample stats" className="flex flex-col gap-3">
-      <p className="text-white/60 text-xs uppercase tracking-wide">Field</p>
-      <p className="truncate font-medium text-sm text-white" title={field.name}>
-        {field.name}
-      </p>
-
-      <div className="rounded-md border border-white/10 border-dashed bg-white/[0.03] px-3 py-6 text-center">
-        <p className="text-sm text-white/80">NDVI sample stats arrive in Phase 7.</p>
-        <p className="mt-1 text-white/60 text-xs">
-          Mean, p10/p90, median, cloud confidence, and a mini-histogram for the selected scene.
-        </p>
-      </div>
-    </section>
   );
 }
 

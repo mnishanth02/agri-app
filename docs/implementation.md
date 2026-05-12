@@ -1013,7 +1013,7 @@ Depends on: 7.1, 0.7.
 
 **Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes; toggling between NDVI and EVI triggers a new fetch (different cache key) instead of reusing the wrong index's data.
 
-### Module 7.3 — Sample sidebar pane
+### Module 7.3 — Sample sidebar pane ✅ (completed 2026-05-12)
 
 Depends on: 5.3, 7.2.
 
