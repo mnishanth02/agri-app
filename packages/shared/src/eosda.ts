@@ -99,3 +99,65 @@ export const eosdaScenesResponse = z.object({
 });
 
 export type EosdaScenesResponse = z.infer<typeof eosdaScenesResponse>;
+
+/**
+ * Vegetation index identifier accepted by the Statistics API. Mirrors the
+ * `bm_type` enumeration from EOSDA `mt_stats` (see
+ * `docs/review-findings.md` §3.7). Up to 3 may be requested per task.
+ */
+export const vegetationIndex = z.enum(['NDVI', 'EVI', 'NDWI']);
+export type VegetationIndex = z.infer<typeof vegetationIndex>;
+
+/**
+ * Hard cap on the number of vegetation indexes per Statistics request,
+ * mirroring EOSDA's documented `bm_type` limit of 3. Centralised here so
+ * both client (when assembling the request) and server (when validating
+ * the body) reference the same constant.
+ */
+export const MAX_INDEXES_PER_STATS_REQUEST = 3;
+
+/**
+ * Request body for `POST /api/eosda/stats` (Module 7.1).
+ *
+ * `indexes` defaults to `['NDVI']` when omitted. `dateRange.from`/`to`
+ * mirror the scenes route's contract (last-90-days when omitted, anchored
+ * on the resolved `to`). Both date bounds are inclusive `YYYY-MM-DD`
+ * filtered against `cached_ndvi_stats.scene_date`.
+ */
+export const eosdaStatsRequest = z.object({
+  fieldId: z.uuid(),
+  indexes: z.array(vegetationIndex).min(1).max(MAX_INDEXES_PER_STATS_REQUEST).optional(),
+  dateRange: z
+    .object({
+      from: isoDate.optional(),
+      to: isoDate.optional(),
+    })
+    .optional(),
+});
+
+export type EosdaStatsRequest = z.infer<typeof eosdaStatsRequest>;
+
+/**
+ * Discriminator returned in `eosdaStatsResponse.error` when the requested
+ * date range has no cached scenes for the field. The route returns this
+ * with HTTP 200 (empty is a legitimate steady state) so the frontend can
+ * render an empty-state message without burning EOSDA `mt_stats` quota.
+ */
+export const NO_SCENES_FOR_RANGE = 'NO_SCENES_FOR_RANGE' as const;
+
+/**
+ * Response shape for `POST /api/eosda/stats`. Stats are ordered
+ * newest-first by `sceneDate`, then by `viewId` and `indexName` for a
+ * deterministic tie-break (mirrors `listNdviStats`).
+ *
+ * `error: 'NO_SCENES_FOR_RANGE'` is set when the route short-circuits on
+ * an empty scene cache for the requested range. `stats` is `[]` in that
+ * case. Other 5xx/4xx error shapes (`STATS_TIMEOUT` etc.) are surfaced as
+ * non-200 responses, NOT as `error` fields here.
+ */
+export const eosdaStatsResponse = z.object({
+  stats: z.array(ndviStatsDto),
+  error: z.literal(NO_SCENES_FOR_RANGE).optional(),
+});
+
+export type EosdaStatsResponse = z.infer<typeof eosdaStatsResponse>;

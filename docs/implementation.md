@@ -964,55 +964,80 @@ Verification only — no code changes. Confirmed:
 
 **Phase entry:** Phase 6 complete.
 
-### Module 7.1 — `POST /api/eosda/stats`
+### Module 7.1 — `POST /api/eosda/stats` ✅ (completed 2026-05-12)
 
 Depends on: 1.6, 4.4, 4.1.
 
-1. Add `routes/eosda.stats.ts`:
-   - Body: `{ fieldId, indexes?: ('NDVI'|'EVI'|'NDWI')[], dateRange? }` (default indexes `['NDVI']`, max 3 per [`plan.md` EOSDA gotchas](./plan.md#eosda-specific)).
-   - Auth + ownership check on `fieldId`.
-   - Cache-first: read `cached_ndvi_stats` for `(fieldId, viewId, index)` across the listed `view_ids` (the route may use the cached scenes table to know which `view_ids` to consider).
-   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the field geometry + date range, `sensors: ['sentinel2']`, a unique `reference`, and `cloud_masking_level: 1`. Do not replace `geometry` with `cropper_ref`; current EOSDA Statistics docs document `cropper_ref` for Render/imagery contexts, not `mt_stats`.
-   - Poll `GET /api/gdw/api/<task_id>` every ~2s until completion. Use the returned `task_timeout` as the upstream cap, but cap the HTTP request wait to a user-safe maximum (60s for v2); on timeout return `504 { error: 'STATS_TIMEOUT', taskId }` so the frontend can retry instead of hanging.
-   - Normalize the nested response shape: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].average`/`median`/`p10`/`p90`/etc. Map `average` to the app's `mean` column/DTO field before upserting to `cached_ndvi_stats`.
-2. Add `services/stats-cache.ts` to encapsulate the cache reads/writes (mirrors `scene-cache.ts`).
+1. Add `eosdaStatsRequest` and `eosdaStatsResponse` to `packages/shared/src/eosda.ts`. Response envelope mirrors Phase 6: `{ stats: NdviStatsDto[] }`. When the requested range has no scenes the route returns the discriminator `{ stats: [], error: 'NO_SCENES_FOR_RANGE' }` (still HTTP 200; empty is a legitimate steady state — the frontend renders an empty-state message and DOES NOT spend EOSDA quota running `mt_stats` against zero scenes).
+2. Add `apps/api/src/lib/date-range.ts` extracting `resolveDateRange` from `routes/eosda.scenes.ts` so both routes share the same default (last 90 days anchored on resolved `to`). Update the scenes route to import from the new module.
+3. Add `apps/api/src/services/eosda-stats.ts` exporting `runMtStats({ geometry, indexes, dateRange, log, signal })` (mirrors the `eosda-search.ts` pattern from Phase 4). The service owns:
+   - Create-task POST to `/api/gdw/api` with body `{ type: 'mt_stats', params: { bm_type, date_start, date_end, geometry, reference, sensors: ['sentinel2'], cloud_masking_level: 1 } }`. Use `geometry` (NOT `cropper_ref`) per [`docs/review-findings.md` §3.7](./review-findings.md). `reference = vizcrop-${shortHash}-${Date.now()}` where `shortHash` is the first 12 hex chars of `sha256(fieldId|sortedIndexes|date_start|date_end)` — gives a useful grep-key in EOSDA dashboards while the timestamp guarantees uniqueness so we never accidentally rejoin a stale task.
+   - Poll `GET /api/gdw/api/<task_id>` every 2s using `setTimeout` + `await` (NOT `setInterval` — interval can't be cancelled cleanly). User-safe cap = `min(task_timeout, 60)` seconds. On timeout return `STATS_TIMEOUT` so the route can map to HTTP 504.
+   - Normalize the nested EOSDA response: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].{ average, median, min, max, p10, p90 }`. Map `average` → `mean` before returning to caller.
+   > ⚠️ DEVIATION: EOSDA `mt_stats` also returns `std`, `variance`, `q1`, `q3` per scene. The `cached_ndvi_stats` schema has no columns for these and v2 has no UI for them — discarded by choice. A future phase that needs them must add columns + a migration.
+4. Add `apps/api/src/services/eosda-stats.test.ts` (mock `eosdaRequest`).
+5. Add `apps/api/src/services/stats-cache.ts` encapsulating cache reads/writes (mirrors `scene-cache.ts`):
+   - `upsertNdviStats(fieldId, rows, opts)` — bulk INSERT … ON CONFLICT (`field_id, view_id, index_name`) DO UPDATE.
+   - `listNdviStats(fieldId, { viewIds?, indexes?, db? })` — SELECT projected to numeric-string-preserving wire shape (shared zod uses `z.coerce.number()`).
+   - `findMissingPairs(fieldId, viewIds, indexes, opts)` — returns `(viewId, index)` tuples NOT in cache.
+6. Add `apps/api/src/services/stats-cache.test.ts` (round-trip against dev PostGIS).
+7. Add `apps/api/src/routes/eosda.stats.ts`. Orchestration:
+   1. Auth + ownership SELECT on `fieldId` (also fetches `geometry` to avoid a second round-trip — Phase 6 pattern).
+   2. Use `listScenesForApi(fieldId, { dateRange, db })` to learn which `view_ids` exist for the requested range. **If zero**, short-circuit and return `{ stats: [], error: 'NO_SCENES_FOR_RANGE' }` (no EOSDA quota burn).
+   3. Use `findMissingPairs` to compute `(viewId, index)` tuples not yet cached.
+   4. **If at least one missing**, fire ONE `mt_stats` task for the FULL geometry + FULL `dateRange` + ALL requested indexes (cheap on quota — one task covers many scenes). Upsert results into `cached_ndvi_stats` and re-read.
+   5. **If all cached**, return immediately.
+   - Re-read cache after upsert so the wire shape matches the shared zod schema.
+   - On EOSDA error degrade to stale cache where possible (Phase 6 pattern); only return 502 when there's no usable cached row at all.
+8. Add `apps/api/test/eosda.stats.routes.test.ts` (mock `runMtStats`; Clerk mock with `x-test-user-id`).
+9. Register the new route plugin in `apps/api/src/server.ts`.
 
-**Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits.
+**Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits; empty-range request returns `NO_SCENES_FOR_RANGE` without consuming quota.
 
 ### Module 7.2 — `useEosdaStats` hook
 
 Depends on: 7.1, 0.7.
 
 1. Create `hooks/useEosdaStats.ts`:
-   - `useEosdaStats(fieldId, indexes)` returns the full series for the field.
+   - Signature: `useEosdaStats({ fieldId, indexes?, dateRange? })` returning `UseQueryResult<NdviStatsDto[], Error>`.
+   - Query key (rubber-duck #2): `eosdaKeys.stats(fieldId, sortedIndexes, dateRange)` where `sortedIndexes = [...indexes].sort().join(',')` and `dateRange` contributes `from` + `to`. Add `stats(...)` to the existing `eosdaKeys` factory in `useEosdaScenes.ts`. Without these dimensions in the key, switching NDVI → EVI would reuse the NDVI cache.
+   - Subscribe to `useEosdaScenes(fieldId)` for `enabled: scenesQuery.isSuccess && fieldId.length > 0` (rubber-duck #1 race fix). Stats must never run before scenes cache is fresh for the same `(fieldId, dateRange)`.
    - `staleTime: 60 * 60 * 1000`.
-   - On a 504 `STATS_TIMEOUT`, retry once after 10s and show a non-blocking "Stats are still computing" toast if the retry also times out.
+   - Re-parse the response with `eosdaStatsResponse.parse(data)` (boundary validation pattern from Phase 1).
+   - 504 retry semantics (TanStack Query v5):
+     - `retry: (failureCount, error) => is504(error) && failureCount < 1` — first failure: `failureCount === 0`, retries; second failure: `failureCount === 1`, returns `false`, stops.
+     - `retryDelay: 10_000` — 10s sleep only when `retry` returns `true`. After the second timeout the user sees the final error immediately.
+     - `is504(err) === err instanceof ApiError && err.status === 504`.
+   - Toast on FINAL error: `useQuery` has NO `onError` in v5 (removed). Use a local `useEffect` on `query.isError && !query.isFetching` with a `useRef` guard to fire `toast.error('Stats are still computing — try again in a moment')` exactly once. Module 8.1 may consolidate into a `notifyError` helper later.
    - The Sample pane filters by `selectedViewId` + `selectedIndex` client-side to keep API calls minimal.
 
-**Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes.
+**Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes; toggling between NDVI and EVI triggers a new fetch (different cache key) instead of reusing the wrong index's data.
 
 ### Module 7.3 — Sample sidebar pane
 
 Depends on: 5.3, 7.2.
 
-1. Build `components/shell/sample/SamplePane.tsx`:
-    - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color-coded: red <0.3, yellow 0.3–0.5, green >0.5.
+1. Create `apps/web/src/lib/ndvi-colors.ts` exporting `getNdviColor(value: number | null): 'red' | 'yellow' | 'green' | 'gray'` and `NDVI_COLOR_CLASSES` (Tailwind tokens — match the palette already used in `scene-helpers.ts`/legend overlays). Used by both Sample pane and Chart tab so thresholds stay in sync (red <0.3, yellow 0.3–0.5, green >0.5; null/undefined → gray).
+2. Build `components/shell/sample/SamplePane.tsx`:
+    - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color via `getNdviColor`.
    - Smaller line: p10 / p90 / median.
    - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
-   - Mini histogram from the bucketed values returned by EOSDA (skip if not available — render a textual fallback).
-2. Wire `RightSidebar` to render `SamplePane` when `activeSidebarItem === 'sample'`.
+   > ⚠️ DEVIATION: mini-histogram skipped in v2. EOSDA `mt_stats` does not return a histogram and `cached_ndvi_stats` has no column. Re-add when a future phase persists the buckets.
+   - All eight UI states must be handled: no-selected-scene, scenes-loading, stats-computing-first-time, stats-retrying-after-504, final-error-with-retry-button, no-scenes-for-range (`error: 'NO_SCENES_FOR_RANGE'`), no-stats-for-pair, happy.
+3. Wire `RightSidebar` to render `<SamplePane field={field} />` when `activeSidebarItem === 'sample'`. Remove the now-dead `SamplePanePlaceholder` helper.
 
-**Done when:** The pane shows realistic numbers and re-renders on date/index switches.
+**Done when:** The pane shows realistic numbers and re-renders on date/index switches; loading/empty/error states render appropriately.
 
 ### Module 7.4 — Chart tab
 
 Depends on: 5.4, 7.2.
 
-1. Install `recharts`.
-2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = Mean NDVI, dot color matching the same red/yellow/green thresholds. De-emphasize (lower opacity) points with cloud > 50% or low data coverage.
-3. Replace the BottomBar Chart tab placeholder with `NdviChart`.
+1. Install `recharts: ^3.3.0` (verified React 19 compatible — peer deps `react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0`).
+2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = Mean NDVI, dot color matching the same red/yellow/green thresholds via the shared `getNdviColor` from Module 7.3. De-emphasize (lower opacity, e.g. 0.4) points with cloud > 50% or low data coverage. Use a custom `<Dot />` per-point to drive the per-scene fill color.
+3. Replace the BottomBar Chart tab placeholder body with `<NdviChart fieldId={field.id} />`.
+4. Render the same eight UI states as the Sample pane.
 
-**Done when:** Switching the BottomBar to the Chart tab shows the line for the field.
+**Done when:** Switching the BottomBar to the Chart tab shows the line for the field; dots are color-coded and low-confidence points are visually de-emphasized.
 
 ### Phase 7 exit criteria
 

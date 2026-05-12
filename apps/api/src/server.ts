@@ -7,6 +7,7 @@ import { registerCors } from './plugins/cors.js';
 import { dbPlugin } from './plugins/db.js';
 import eosdaRenderRoutes from './routes/eosda.render.js';
 import eosdaScenesRoutes from './routes/eosda.scenes.js';
+import eosdaStatsRoutes from './routes/eosda.stats.js';
 import { fieldRoutes } from './routes/fields.js';
 import { healthRoutes } from './routes/health.js';
 
@@ -45,6 +46,7 @@ export async function buildServer() {
 
   await app.register(healthRoutes, { prefix: '/api' });
   await app.register(eosdaScenesRoutes, { prefix: '/api' });
+  await app.register(eosdaStatsRoutes, { prefix: '/api' });
   await app.register(eosdaRenderRoutes, { prefix: '/api' });
   await app.register(fieldRoutes, { prefix: '/api' });
 

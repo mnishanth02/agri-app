@@ -39,6 +39,7 @@ import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastif
 import { type ZodError, z } from 'zod';
 import { geometryToGeoJson } from '../db/geometry.js';
 import { fields } from '../db/schema.js';
+import { resolveDateRange } from '../lib/date-range.js';
 import { requireUser } from '../plugins/auth.js';
 import { searchScenes } from '../services/eosda-search.js';
 import { listScenesForApi, upsertScenes } from '../services/scene-cache.js';
@@ -50,15 +51,6 @@ import { listScenesForApi, upsertScenes } from '../services/scene-cache.js';
  * day without paying EOSDA quota for every reload within the same day.
  */
 const FRESHNESS_TTL_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Default Search window in days when the caller omits `dateRange`. Matches
- * the warm-up's initial window (`DEFAULT_INITIAL_WINDOW_DAYS = 90` in
- * `field-warmup.ts`) so a "cold" route call asks EOSDA for the same
- * timeline the Phase 4 warm-up would have asked for, just at higher
- * `limit` (timeline view vs. latest-only).
- */
-const DEFAULT_WINDOW_DAYS = 90;
 
 /**
  * Page size we ask EOSDA Search for when the route refreshes the cache.
@@ -95,36 +87,6 @@ function authedUserId(request: FastifyRequest): string {
     throw request.server.httpErrors.unauthorized('Authentication required');
   }
   return userId;
-}
-
-/** Convert a `Date` to a UTC `YYYY-MM-DD` string (mirrors `field-warmup.ts`). */
-function toIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/**
- * Resolve the request's `dateRange` (with possibly-omitted bounds) into a
- * concrete `{ from, to }` window in UTC `YYYY-MM-DD`. Defaults `to` to
- * today and `from` to `to − DEFAULT_WINDOW_DAYS`. Subtracting in
- * milliseconds keeps the math DST-agnostic.
- *
- * NOTE: `from` is anchored to the *resolved* `to` (not to `now`) so a
- * caller that passes only `to: '2024-01-01'` gets a 90-day window
- * ending on that date, NOT a 90-day window ending today (which would
- * almost certainly skip the date the caller asked about).
- */
-function resolveDateRange(
-  requested: { from?: string | undefined; to?: string | undefined } | undefined,
-  now: Date,
-): { from: string; to: string } {
-  const to = requested?.to ?? toIsoDate(now);
-  if (requested?.from) return { from: requested.from, to };
-  // Anchor the default `from` window on the resolved `to` so explicit
-  // historical `to` values produce a meaningful window around them.
-  const toMs = Date.parse(`${to}T00:00:00Z`);
-  const anchorMs = Number.isFinite(toMs) ? toMs : now.getTime();
-  const fromMs = anchorMs - DEFAULT_WINDOW_DAYS * 86_400_000;
-  return { from: toIsoDate(new Date(fromMs)), to };
 }
 
 const eosdaScenesRoutes: FastifyPluginAsync = async (app) => {
