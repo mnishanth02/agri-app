@@ -48,6 +48,8 @@ const COLOR_DEFAULTS = {
   NDWI: { COLORMAP: 'Blues', MIN_MAX: '-1,1' },
 } as const satisfies Record<string, { COLORMAP: string; MIN_MAX: string }>;
 
+const LAZY_CROPPER_HEAL_TIMEOUT_MS = 30_000;
+
 type Band = keyof typeof COLOR_DEFAULTS;
 
 /**
@@ -156,14 +158,36 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
       // condition, but skipping the call entirely avoids the import
       // cost in the hot path.
       if (row.eosdaCropperRef) return;
-      await getOrCreateCropperRef(
+      const cropperPromise = getOrCreateCropperRef(
         {
           id: row.id,
           geometry: row.geometry as PolygonGeoJson,
           eosdaCropperRef: null,
         },
         { db, log },
-      );
+      ).catch((err) => {
+        log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
+      });
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
+        timer.unref?.();
+      });
+      try {
+        const outcome = await Promise.race([
+          cropperPromise.then(() => 'settled' as const),
+          timeout,
+        ]);
+        if (outcome === 'timeout') {
+          log.warn(
+            { fieldId, timeoutMs: LAZY_CROPPER_HEAL_TIMEOUT_MS },
+            'render: lazy cropper-ref heal still pending after timeout; allowing future retry',
+          );
+        }
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     } catch (err) {
       log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
     } finally {
