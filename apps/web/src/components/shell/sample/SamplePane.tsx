@@ -48,7 +48,11 @@ export function SamplePane({ field }: SamplePaneProps) {
   const matchingRow = pickStatsRow(statsQuery.data?.stats ?? [], selectedViewId, selectedIndex);
 
   return (
-    <section data-pane="sample" aria-label="NDVI sample stats" className="flex flex-col gap-3">
+    <section
+      data-pane="sample"
+      aria-label={`${selectedIndex} sample stats`}
+      className="flex flex-col gap-3"
+    >
       <Header field={field} index={selectedIndex} />
 
       {scenesQuery.isPending ? (
@@ -67,7 +71,7 @@ export function SamplePane({ field }: SamplePaneProps) {
       ) : selectedViewId === null ? (
         <EmptyState
           title="Pick a scene"
-          body="Select a date from the timeline below to see NDVI statistics for the field."
+          body={`Select a date from the timeline below to see ${selectedIndex} statistics for the field.`}
         />
       ) : statsQuery.isFetching ? (
         <SkeletonBody hint={isStatsRetrying ? 'Still computing…' : 'Computing… (~30s)'} />

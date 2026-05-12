@@ -665,21 +665,18 @@ Depends on: 1.6, 4.5.
 > 1. **`assertSafePath` (eosda-client.ts)** — added control-character rejection (`\x00–\x1f`, `\x7f`) and a post-`URL`-parse `searchParams.has('api_key')` check that catches percent-encoded smuggling like `%61pi_key=` or `api%5fkey=` that the literal regex never sees.
 > 2. **`searchScenes` (eosda-search.ts)** — coerce missing/null `results` to `[]` so genuine no-coverage from EOSDA cleanly enters Module 4.5's fallback widening; still throws on present-but-non-array shapes to defend against silent garbage coercion.
 > 3. **`warmField` upsert catch (field-warmup.ts)** — recognise SQLSTATE `23503` (foreign_key_violation) on `upsertScenes` as a benign delete-after-create race (user deleted the field while warm-up was in flight); log at `info` instead of letting Module 4.6's outer `.catch(...)` log it as `'warm failed'`. The check walks Drizzle's `DrizzleQueryError.cause` chain because Drizzle 0.45 wraps every pg error.
->
 > Test coverage delta: 98 → 102 tests (added encoded-api_key, control-char, search empty-results coercion, FK-23503 race, and non-23503 propagation). All pass; `pnpm check` and `pnpm run ci` green.
 
 > 🔧 Phase 4 cropper-persistence reliability fix (2026-05-12) — three changes after live debugging found ALL 9 dev-DB rows had `eosda_cropper_ref = NULL` despite Module 4.6 being marked complete:
 > 1. **`field-warmup.ts`** — replaced fire-and-forget `void getOrCreateCropperRef(...)` with an awaited `Promise.all` that bounds cropper at `cropperTimeoutMs` (default 30 s, exported as `DEFAULT_CROPPER_TIMEOUT_MS`). Root cause: the detached promise was being killed by `tsx watch` dev-server restarts within ~1 s of field creation, before the DB UPDATE could land. Awaiting holds the warm-up function alive until the UPDATE commits; the timeout is a safety valve so a wedged EOSDA endpoint can't stall warm-up forever (warns and continues).
 > 2. **`eosda-cropper.ts`** — added INFO log `'cropper persisted'` on successful UPDATE so future regressions are visible in logs without DB inspection.
 > 3. **`routes/eosda.render.ts`** — added lazy self-heal: when a tile request finds `cropper_ref` NULL, kick `getOrCreateCropperRef(...)` in the background (with an in-process Set guard to dedupe concurrent kicks) so the next tile request will be properly clipped. Current tile is served scene-wide as graceful fallback. Defense-in-depth against any future warm-up regression.
->
 > Dev-DB recovery: pre-existing rows were truncated rather than backfilled (project is pre-production, no migration needed). Verified end-to-end via direct upstream probe: cropper POST returns `7b8df71295f951cf3526bcd2fb92a366` for the test polygon, render with that hash returns 90.6% transparent at z=16 (clipped to polygon).
 
 > 🔧 NDVI tile-clipping & request-flood fix (2026-05-12) — three changes after a user report that "the index is not getting applied to the selected polygon" (NDVI bleeding past the field) and "we're getting too many requests rate limit when I zoom out". Direct EOSDA probe with the persisted `cropper_ref` returned a 334-byte 100% transparent PNG for tiles outside the polygon — proving the upstream cropper mechanism worked. The bug was on the proxy + client side:
 > 1. **`routes/eosda.render.ts`** — split `Cache-Control` by branch. Cropper-bound tiles still get `private, max-age=86400` (stable). The un-clipped fallback (no `cropper_ref` yet) now gets `private, no-store` so a tile fetched during the warm-up race can't poison-cache the browser for 24 h. Root cause of issue #1: the user's browser had cached an un-clipped fallback PNG from before warm-up await landed; the long max-age held that response in cache for 24 h even after the DB had the hash.
 > 2. **`components/map/NdviLayer.tsx`** — added `bounds` and `cropperRef` props; passed `bounds` to `map.addSource(...)` per [MapLibre `raster.bounds` spec](https://maplibre.org/maplibre-style-spec/sources/#raster) so MapLibre never requests tiles outside the field bbox; appended `&v=<cropperRef|pending>` to the tile URL as a cache-buster so the URL changes the moment warm-up flips the column from `NULL` → hash, evicting any stale fallback tiles without a hard refresh. The proxy strips `v` via zod (it never reaches EOSDA upstream).
 > 3. **`layouts/AnalysisLayout.tsx`** — passes the existing `bounds` (already computed from `bbox(field.geometry)`) and `field.eosdaCropperRef` to `<NdviLayer>`.
->
 > Test coverage delta: 154 → 155 tests (added `'private, no-store'` Cache-Control assertion for the un-clipped fallback path). Live Chrome MCP validation: tile-request count dropped from 38 (with 18× HTTP 429 + 5 ERR_ABORTED) to 2 on initial load; aggressive zoom-out (4 successive `Zoom out` clicks) issued 0 additional tile requests; visual screenshot confirms NDVI is contained inside the triangle while surroundings show raw imagery.
 
 ---
@@ -839,7 +836,7 @@ Depends on: 6.1, 0.7.
 2. `staleTime: 60 * 60 * 1000` (1 h) per [`plan.md` TanStack Query cache defaults](./plan.md#tanstack-query-cache-defaults).
 3. Auto-select the newest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset). If no low-cloud scene exists, select the newest scene and let the timeline mark it as cloudy.
 
-> ✅ RESOLVED (Module 6.4, 2025-11-07): `useAutoSelectDefaultScene(field.id)` is mounted in `AnalysisLayout.tsx` immediately after the Clerk-token-ref / `transformRequest` setup, so `/fields/:id` populates `selectedViewId` as soon as `useEosdaScenes` resolves.
+> ✅ RESOLVED (Module 6.4, 2026-05-11): `useAutoSelectDefaultScene(field.id)` is mounted in `AnalysisLayout.tsx` immediately after the Clerk-token-ref / `transformRequest` setup, so `/fields/:id` populates `selectedViewId` as soon as `useEosdaScenes` resolves.
 
 **Done when:** Mounting `/fields/:id` populates the DateTimeline with real scene dates and selects a default.
 
@@ -900,7 +897,7 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 6.2, 6.3, 3.1.
 
 **Done when:** NDVI heatmap appears for the default scene; the network panel shows authenticated `200` responses to `/api/eosda/render/...` (not `401`/`404`); switching scene/index visibly updates the raster.
 
-**Implementation notes (2025-11-07):**
+**Implementation notes (2026-05-11):**
 - `apps/web/src/components/map/NdviLayer.tsx` — two-effect (lifecycle + opacity-only) component that mounts a `raster` source + `raster` layer driven by `useUiStore` (`selectedViewId`, `selectedIndex`, `ndviOpacity`).
 - Lifecycle effect gates on `isAuthReady === true && selectedViewId != null` so MapLibre never fires tile requests before the Clerk JWT resolves (avoids the 401 storm called out in the rubber-duck review).
 - `beforeId = findFirstSymbolLayerId(map)` (helper now in `apps/web/src/lib/map-style.ts`) inserts NDVI under basemap label symbols. `<NdviLayer>` is mounted *before* `<FieldLayer>` in JSX so `FieldLayer.moveLayer(...)` keeps the field outline on top.
@@ -924,7 +921,7 @@ Depends on: 5.5, 6.2, 6.4.
 
 **Done when:** Clicking different dates updates the NDVI raster on the map.
 
-**Implementation notes (2025-11-07):**
+**Implementation notes (2026-05-11):**
 - Added `showCloudyScenes: boolean` (default `false`) + `setShowCloudyScenes(next | updater)` to `apps/web/src/stores/useUiStore.ts`. Setter accepts a value OR an updater function so both `CloudHiddenToast` ("Show all") and `DateTimeline` (toggle) can flip it without an extra read.
 - `apps/web/src/components/map/overlays/DateTimeline.tsx` rewritten: takes `fieldId: string`; subscribes to `useEosdaScenes(fieldId)`; computes best-per-date in render via `useMemo` (lowest `cloudPercent` with `null` ranked as `+∞`, tie-broken by highest `dataCoveragePercent` with `null` ranked as `-∞`); chips sorted oldest → newest; the currently selected chip is unioned into the visible set even when cloudy and the toggle is off (rubber-duck #8); skeleton loading + error pill with retry + empty-state `<output>`; "Show / Hide cloudy" toggle lives at the right end of the strip with `aria-pressed`. Strip uses `role="toolbar"` + `<button aria-pressed>` chips (matches the existing visual stub and Biome's lint guidance against `role="radio"` on non-input elements).
 - `apps/web/src/components/map/overlays/CloudHiddenToast.tsx` rewritten: takes `fieldId: string`; subscribes to the same `useEosdaScenes` query (TanStack Query dedupes — no extra request); computes `hiddenCloudyCount` from best-per-date in `useMemo`; renders only when `!showCloudyScenes && hiddenCloudyCount > 0`; "Show all" button calls `setShowCloudyScenes(true)`; preserves the `dock-bottom-anchored` class and the `var(--bottom-dock-h) + 11rem` anchor; auto-dismiss removed (now carries an actionable affordance).
@@ -1020,8 +1017,8 @@ Depends on: 5.3, 7.2.
 1. Create `apps/web/src/lib/ndvi-colors.ts` exporting `getNdviColor(value: number | null): 'red' | 'yellow' | 'green' | 'gray'` and `NDVI_COLOR_CLASSES` (Tailwind tokens — match the palette already used in `scene-helpers.ts`/legend overlays). Used by both Sample pane and Chart tab so thresholds stay in sync (red <0.3, yellow 0.3–0.5, green >0.5; null/undefined → gray).
 2. Build `components/shell/sample/SamplePane.tsx`:
     - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color via `getNdviColor`.
-   - Smaller line: p10 / p90 / median.
-   - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
+    - Smaller line: p10 / p90 / median.
+    - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
    > ⚠️ DEVIATION: mini-histogram skipped in v2. EOSDA `mt_stats` does not return a histogram and `cached_ndvi_stats` has no column. Re-add when a future phase persists the buckets.
    - All eight UI states must be handled: no-selected-scene, scenes-loading, stats-computing-first-time, stats-retrying-after-504, final-error-with-retry-button, no-scenes-for-range (`error: 'NO_SCENES_FOR_RANGE'`), no-stats-for-pair, happy.
 3. Wire `RightSidebar` to render `<SamplePane field={field} />` when `activeSidebarItem === 'sample'`. Remove the now-dead `SamplePanePlaceholder` helper.
