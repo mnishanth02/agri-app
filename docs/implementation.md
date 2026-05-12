@@ -994,7 +994,7 @@ Depends on: 1.6, 4.4, 4.1.
 
 **Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits; empty-range request returns `NO_SCENES_FOR_RANGE` without consuming quota.
 
-### Module 7.2 — `useEosdaStats` hook
+### Module 7.2 — `useEosdaStats` hook ✅ (completed 2026-05-12)
 
 Depends on: 7.1, 0.7.
 
