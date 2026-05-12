@@ -21,12 +21,16 @@
  *     We never reimplement those here.
  */
 import { getAuth } from '@clerk/fastify';
+import type { PolygonGeoJson } from '@viz-crop/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { type ZodError, z } from 'zod';
+import type { Db } from '../db/client.js';
+import { geometryToGeoJson } from '../db/geometry.js';
 import { cachedScenes, fields } from '../db/schema.js';
 import { requireUser } from '../plugins/auth.js';
 import { eosdaFetch } from '../services/eosda-client.js';
+import { getOrCreateCropperRef } from '../services/eosda-cropper.js';
 
 /**
  * Per-band rendering defaults. Set unconditionally on every upstream
@@ -104,6 +108,68 @@ function authedUserId(request: FastifyRequest): string {
     throw request.server.httpErrors.unauthorized('Authentication required');
   }
   return userId;
+}
+
+/**
+ * In-process dedupe set for {@link kickLazyCropperHeal}. A single field
+ * may be the target of dozens of concurrent tile requests during a
+ * pan/zoom; we only want one cropper POST in flight at a time per
+ * field. Per-worker scope is fine — at worst N workers each fire one
+ * POST, and `getOrCreateCropperRef` short-circuits via its own
+ * `if (field.eosdaCropperRef)` early return for any worker that loses
+ * the race.
+ */
+const inflightLazyCropperHeals = new Set<string>();
+
+/**
+ * Self-healing background create when a tile request finds
+ * `eosda_cropper_ref` NULL. Issues `getOrCreateCropperRef(...)` so the
+ * NEXT tile request will be properly clipped; the current tile is
+ * served scene-wide as a graceful fallback (the route handler does
+ * not await this kick). Designed for steady-state recovery from any
+ * field that ended up with a NULL ref due to a warm-up failure or a
+ * pre-Module-4.6 row that never had warm-up wired up.
+ *
+ * Errors are logged and swallowed — there is no user-visible failure
+ * mode here; the worst case is the next tile is also scene-wide and
+ * we'll try again then.
+ */
+function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']): void {
+  if (inflightLazyCropperHeals.has(fieldId)) return;
+  inflightLazyCropperHeals.add(fieldId);
+  void (async () => {
+    try {
+      const rows = await db
+        .select({
+          id: fields.id,
+          geometry: geometryToGeoJson(fields.geometry),
+          eosdaCropperRef: fields.eosdaCropperRef,
+        })
+        .from(fields)
+        .where(eq(fields.id, fieldId))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return;
+      // Re-check after the SELECT: another worker (or warm-up itself)
+      // may have populated the column between our trigger and this
+      // load. `getOrCreateCropperRef` would short-circuit on the same
+      // condition, but skipping the call entirely avoids the import
+      // cost in the hot path.
+      if (row.eosdaCropperRef) return;
+      await getOrCreateCropperRef(
+        {
+          id: row.id,
+          geometry: row.geometry as PolygonGeoJson,
+          eosdaCropperRef: null,
+        },
+        { db, log },
+      );
+    } catch (err) {
+      log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
+    } finally {
+      inflightLazyCropperHeals.delete(fieldId);
+    }
+  })();
 }
 
 /**
@@ -191,6 +257,12 @@ const eosdaRenderRoutes = async (app: FastifyInstance): Promise<void> => {
     });
     if (row.cropperRef) {
       upstreamQuery.set('cropper_ref', row.cropperRef);
+    } else {
+      // Self-heal: this field has no `eosda_cropper_ref` despite owning
+      // a cached scene. Kick a background create so subsequent tile
+      // requests will be clipped properly. The current tile is served
+      // scene-wide as a graceful fallback. See `kickLazyCropperHeal`.
+      kickLazyCropperHeal(app.db, fieldId, request.log);
     }
 
     const upstreamPath = `/api/render/${decodedViewId}/${band}/${zVal}/${xVal}/${yVal}?${upstreamQuery.toString()}`;
@@ -243,7 +315,17 @@ const eosdaRenderRoutes = async (app: FastifyInstance): Promise<void> => {
     // Cache-Control is `private` because the proxy is per-user and the
     // upstream tile is selected by ownership — public caches must not
     // share these.
-    reply.header('Content-Type', 'image/png').header('Cache-Control', 'private, max-age=86400');
+    //
+    // Cropper-bound tiles are stable for the (field-polygon, viewId)
+    // pair — cache them aggressively (24h). The un-clipped FALLBACK
+    // path (no `cropper_ref` yet) is `no-store`: warm-up is racing to
+    // populate the column and the next request after it lands MUST
+    // re-fetch and pick up the clipped variant. Without `no-store`,
+    // browsers and MapLibre's own tile cache would pin the un-clipped
+    // PNG for 24 h and the user would see NDVI bleed past the polygon
+    // until the cache expired.
+    const cacheControl = row.cropperRef ? 'private, max-age=86400' : 'private, no-store';
+    reply.header('Content-Type', 'image/png').header('Cache-Control', cacheControl);
     return reply.send(png);
   });
 };

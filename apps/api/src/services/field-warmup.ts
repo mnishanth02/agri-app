@@ -13,9 +13,17 @@
  *      Search succeeds.
  *
  * Cropper/Search orchestration:
- *   - Cropper is kicked off fire-and-forget with its own `.catch(...)`.
- *     Search is awaited independently so a slow/hung Cropper POST never
- *     delays scene caching once Search returns.
+ *   - Cropper and Search are issued in parallel and warm-up awaits both
+ *     via `Promise.all`. Cropper is bounded by `cropperTimeoutMs`
+ *     (default {@link DEFAULT_CROPPER_TIMEOUT_MS}) so a wedged EOSDA
+ *     endpoint can't stall warm-up forever; on timeout we log a `warn`
+ *     and continue without blocking.
+ *   - Awaiting cropper (rather than fire-and-forget) is intentional:
+ *     the previous detached design left `eosda_cropper_ref` NULL
+ *     whenever the dev server restarted within ~1 s of field creation,
+ *     because the in-flight cropper Promise was killed before its DB
+ *     UPDATE landed. Awaiting holds the warm-up function alive long
+ *     enough for the UPDATE to commit.
  *   - `searchScenes` throws on transport / non-2xx EOSDA responses (per
  *     `services/eosda-search.ts` JSDoc lines 31-37 and the explicit
  *     `throw` at line 222). The Search branch catches that directly and
@@ -88,6 +96,19 @@ export const DEFAULT_INITIAL_WINDOW_DAYS = 90;
  */
 export const DEFAULT_FALLBACK_WINDOWS_DAYS: readonly number[] = [180, 365] as const;
 
+/**
+ * Upper bound on how long warm-up will block waiting for the Cropper
+ * POST + UPDATE to settle. Production cropper round-trips are ~150–400
+ * ms (verified live against `api-connect.eos.com`); 30 s is a generous
+ * safety valve so a wedged EOSDA endpoint can't stall warm-up
+ * indefinitely. The previous design (`void getOrCreateCropperRef`)
+ * was vulnerable to dev-server restarts (`tsx watch`) killing the
+ * detached promise before the DB UPDATE landed — leaving
+ * `eosda_cropper_ref` NULL even though Search/Cache had succeeded.
+ * Awaiting cropper with a bounded timeout removes that race entirely.
+ */
+export const DEFAULT_CROPPER_TIMEOUT_MS = 30_000;
+
 /** Console-backed default logger; matches the shape used in `eosda-cropper.ts`. */
 const consoleLog: EosdaLogger = {
   info: (obj, msg) => console.info(msg ?? '', obj),
@@ -125,6 +146,13 @@ export interface WarmFieldOptions {
    * {@link DEFAULT_FALLBACK_WINDOWS_DAYS} (`[180, 365]`).
    */
   fallbackWindowsDays?: readonly number[];
+  /**
+   * Maximum milliseconds to wait for the Cropper POST + UPDATE to
+   * settle before warm-up returns. Defaults to
+   * {@link DEFAULT_CROPPER_TIMEOUT_MS}. Tests use a small value to
+   * exercise the timeout branch without waiting 30 s.
+   */
+  cropperTimeoutMs?: number;
   /**
    * Clock injection for tests. Defaults to `() => new Date()`. Date
    * window arithmetic uses UTC `YYYY-MM-DD` so DST/local-tz never
@@ -196,6 +224,54 @@ export function dateRangeForWindow(now: Date, days: number): { from: string; to:
  * Throws (does NOT widen) on transport / EOSDA errors. The caller
  * (`warmField`) catches the throw and logs it as a Search failure.
  */
+/**
+ * Sentinel returned by the inner search wrapper to distinguish
+ * "Search threw and was already logged" from "Search succeeded with
+ * no coverage" (both show up as the absence of a scene). Keeping the
+ * two paths separate lets us suppress the "no coverage" info log
+ * when the real cause was a transport failure that already produced
+ * an `error` log line.
+ */
+const SEARCH_FAILED = Symbol('SEARCH_FAILED');
+
+/**
+ * Await the cropper promise but don't block warm-up forever if EOSDA
+ * is wedged. Resolves on whichever happens first:
+ *   - cropper settles (success, internal swallow to `null`, or the
+ *     defensive outer `.catch` in `warmField` turning a leak into
+ *     `null`); or
+ *   - `timeoutMs` elapses, in which case we log a `warn` and let
+ *     warm-up continue. The cropper Promise becomes detached at that
+ *     point, but its `.catch` upstream guarantees no `unhandledRejection`.
+ *
+ * The timer is `unref`'d so a wedged cropper never keeps Node's event
+ * loop alive past warm-up itself; cleared on the success branch so
+ * fast-cropper paths (the common case) don't leave a pending timer.
+ */
+async function awaitCropperWithTimeout(
+  cropperPromise: Promise<string | null>,
+  timeoutMs: number,
+  fieldId: string,
+  log: EosdaLogger,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    timer.unref?.();
+  });
+  try {
+    const outcome = await Promise.race([cropperPromise.then(() => 'settled' as const), timeout]);
+    if (outcome === 'timeout') {
+      log.warn(
+        { fieldId, timeoutMs },
+        'warm-up: cropper still pending after timeout; continuing without it',
+      );
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function searchLatestSceneWithFallback(
   geometry: PolygonGeoJson,
   windowsDays: readonly number[],
@@ -220,10 +296,10 @@ async function searchLatestSceneWithFallback(
  * Run the post-create warm-up flow for `fieldId`.
  *
  * - Loads the field; logs warn + returns if it doesn't exist.
- * - Starts Cropper in the background, then awaits latest-scene Search
- *   (with fallback windows) independently.
- * - On Search success, upserts `latestScene` into `cached_scenes`
- *   (or no-ops on `null`, since `upsertScenes([])` is itself a no-op).
+ * - Issues Cropper and Search in parallel; awaits both via
+ *   `Promise.all`. Cropper is bounded by `cropperTimeoutMs` so a
+ *   wedged endpoint can't stall warm-up forever.
+ * - On Search success, upserts `latestScene` into `cached_scenes`.
  * - Logs `{ fieldId, err }` for any inspected failure and returns
  *   cleanly. Lets `loadField` / `upsertScenes` failures reject so the
  *   Module 4.6 outer `.catch(...)` records them.
@@ -253,6 +329,7 @@ export async function warmField(fieldId: string, options: WarmFieldOptions = {})
     log = consoleLog,
     initialWindowDays = DEFAULT_INITIAL_WINDOW_DAYS,
     fallbackWindowsDays = DEFAULT_FALLBACK_WINDOWS_DAYS,
+    cropperTimeoutMs = DEFAULT_CROPPER_TIMEOUT_MS,
     now = () => new Date(),
   } = options;
 
@@ -276,28 +353,48 @@ export async function warmField(fieldId: string, options: WarmFieldOptions = {})
   // 180-day window by seconds vs the 90-day window.
   const nowAt = now();
 
-  // Cropper today never throws (it swallows internally to `null`), but
-  // a future change could leak an exception. Surface that defensively
-  // rather than letting it become an `unhandledRejection`. Do not await
-  // it here: scene caching should proceed as soon as Search finishes,
-  // even if the Cropper POST is slow or never settles.
-  void getOrCreateCropperRef(field, { db, log }).catch((err) => {
-    log.error({ fieldId, err }, 'warm-up: cropper rejected unexpectedly');
-  });
+  // Cropper is awaited (with a bounded timeout) so the DB UPDATE inside
+  // `getOrCreateCropperRef` actually lands before warm-up returns. The
+  // earlier fire-and-forget design produced silent NULLs whenever the
+  // dev server (`tsx watch`) restarted within ~1 s of field creation —
+  // see `DEFAULT_CROPPER_TIMEOUT_MS` JSDoc. Cropper still never throws
+  // (it swallows internally to `null`), but the `.catch` keeps a future
+  // accidental leak from becoming an `unhandledRejection`.
+  //
+  // Run cropper and search in parallel via `Promise.all`: cropper is
+  // independent of search, and total wall-clock stays at
+  // `max(cropper, search)` rather than their sum.
+  const cropperPromise = awaitCropperWithTimeout(
+    getOrCreateCropperRef(field, { db, log }).catch((err) => {
+      log.error({ fieldId, err }, 'warm-up: cropper rejected unexpectedly');
+      return null;
+    }),
+    cropperTimeoutMs,
+    fieldId,
+    log,
+  );
 
-  let latestScene: SceneDto | null;
-  try {
-    latestScene = await searchLatestSceneWithFallback(field.geometry, windows, nowAt, log);
-  } catch (err) {
-    log.error({ fieldId, err }, 'warm-up: search failed');
+  const searchPromise: Promise<SceneDto | null | typeof SEARCH_FAILED> = (async () => {
+    try {
+      return await searchLatestSceneWithFallback(field.geometry, windows, nowAt, log);
+    } catch (err) {
+      log.error({ fieldId, err }, 'warm-up: search failed');
+      return SEARCH_FAILED;
+    }
+  })();
+
+  const [, latestScene] = await Promise.all([cropperPromise, searchPromise]);
+
+  if (latestScene === SEARCH_FAILED) {
+    // Search failure already logged above. No upsert.
     return;
   }
 
   if (latestScene === null) {
-    log.info({ fieldId }, 'warm-up: no scenes found in any fallback window');
     // Empty `scenes` is a no-op inside `upsertScenes`, but skipping the
     // call entirely makes the intent explicit and avoids a needless
     // import-level dependency in the "no coverage" path.
+    log.info({ fieldId }, 'warm-up: no scenes found in any fallback window');
     return;
   }
 

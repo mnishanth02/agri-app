@@ -668,6 +668,20 @@ Depends on: 1.6, 4.5.
 >
 > Test coverage delta: 98 → 102 tests (added encoded-api_key, control-char, search empty-results coercion, FK-23503 race, and non-23503 propagation). All pass; `pnpm check` and `pnpm run ci` green.
 
+> 🔧 Phase 4 cropper-persistence reliability fix (2026-05-12) — three changes after live debugging found ALL 9 dev-DB rows had `eosda_cropper_ref = NULL` despite Module 4.6 being marked complete:
+> 1. **`field-warmup.ts`** — replaced fire-and-forget `void getOrCreateCropperRef(...)` with an awaited `Promise.all` that bounds cropper at `cropperTimeoutMs` (default 30 s, exported as `DEFAULT_CROPPER_TIMEOUT_MS`). Root cause: the detached promise was being killed by `tsx watch` dev-server restarts within ~1 s of field creation, before the DB UPDATE could land. Awaiting holds the warm-up function alive until the UPDATE commits; the timeout is a safety valve so a wedged EOSDA endpoint can't stall warm-up forever (warns and continues).
+> 2. **`eosda-cropper.ts`** — added INFO log `'cropper persisted'` on successful UPDATE so future regressions are visible in logs without DB inspection.
+> 3. **`routes/eosda.render.ts`** — added lazy self-heal: when a tile request finds `cropper_ref` NULL, kick `getOrCreateCropperRef(...)` in the background (with an in-process Set guard to dedupe concurrent kicks) so the next tile request will be properly clipped. Current tile is served scene-wide as graceful fallback. Defense-in-depth against any future warm-up regression.
+>
+> Dev-DB recovery: pre-existing rows were truncated rather than backfilled (project is pre-production, no migration needed). Verified end-to-end via direct upstream probe: cropper POST returns `7b8df71295f951cf3526bcd2fb92a366` for the test polygon, render with that hash returns 90.6% transparent at z=16 (clipped to polygon).
+
+> 🔧 NDVI tile-clipping & request-flood fix (2026-05-12) — three changes after a user report that "the index is not getting applied to the selected polygon" (NDVI bleeding past the field) and "we're getting too many requests rate limit when I zoom out". Direct EOSDA probe with the persisted `cropper_ref` returned a 334-byte 100% transparent PNG for tiles outside the polygon — proving the upstream cropper mechanism worked. The bug was on the proxy + client side:
+> 1. **`routes/eosda.render.ts`** — split `Cache-Control` by branch. Cropper-bound tiles still get `private, max-age=86400` (stable). The un-clipped fallback (no `cropper_ref` yet) now gets `private, no-store` so a tile fetched during the warm-up race can't poison-cache the browser for 24 h. Root cause of issue #1: the user's browser had cached an un-clipped fallback PNG from before warm-up await landed; the long max-age held that response in cache for 24 h even after the DB had the hash.
+> 2. **`components/map/NdviLayer.tsx`** — added `bounds` and `cropperRef` props; passed `bounds` to `map.addSource(...)` per [MapLibre `raster.bounds` spec](https://maplibre.org/maplibre-style-spec/sources/#raster) so MapLibre never requests tiles outside the field bbox; appended `&v=<cropperRef|pending>` to the tile URL as a cache-buster so the URL changes the moment warm-up flips the column from `NULL` → hash, evicting any stale fallback tiles without a hard refresh. The proxy strips `v` via zod (it never reaches EOSDA upstream).
+> 3. **`layouts/AnalysisLayout.tsx`** — passes the existing `bounds` (already computed from `bbox(field.geometry)`) and `field.eosdaCropperRef` to `<NdviLayer>`.
+>
+> Test coverage delta: 154 → 155 tests (added `'private, no-store'` Cache-Control assertion for the un-clipped fallback path). Live Chrome MCP validation: tile-request count dropped from 38 (with 18× HTTP 429 + 5 ERR_ABORTED) to 2 on initial load; aggressive zoom-out (4 successive `Zoom out` clicks) issued 0 additional tile requests; visual screenshot confirms NDVI is contained inside the triangle while surroundings show raw imagery.
+
 ---
 
 ## Phase 5 — Analysis layout shells + map overlays ✅ (completed 2026-05-12)

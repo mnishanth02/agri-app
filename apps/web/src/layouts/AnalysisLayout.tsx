@@ -131,7 +131,12 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
         transformRequest={transformRequest}
       >
         <BasemapLayer />
-        <NdviLayer fieldId={field.id} isAuthReady={isAuthReady} />
+        <NdviLayer
+          fieldId={field.id}
+          isAuthReady={isAuthReady}
+          bounds={bounds}
+          cropperRef={field.eosdaCropperRef}
+        />
         <FieldLayer polygon={field.geometry} />
         <FitToFieldBounds bounds={bounds} />
 

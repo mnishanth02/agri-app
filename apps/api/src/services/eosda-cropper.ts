@@ -161,5 +161,11 @@ export async function getOrCreateCropperRef(
     return null;
   }
 
+  // Observability: prove the column was written. Without this, a regression
+  // in warm-up's lifecycle (e.g. detached promise killed by a dev-server
+  // restart) leaves NULL rows behind silently. We log the fieldId only —
+  // the hash itself is uninteresting in logs and can be inspected from the DB.
+  log.info({ fieldId: field.id }, 'cropper persisted');
+
   return cropperRef;
 }

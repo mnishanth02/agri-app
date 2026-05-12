@@ -99,6 +99,16 @@ import { useUiStore } from '@/stores/useUiStore';
 export const NDVI_SOURCE_ID = 'ndvi-tile-source';
 export const NDVI_LAYER_ID = 'ndvi-tile';
 
+/**
+ * EOSDA caps S2 derived-index render tiles at z=16 (verified against
+ * `/api/render/.../{z}/{x}/{y}` — z>=17 returns 422 `"Max zoom exceed"`,
+ * and bursts of those 422s trip the per-key 429 quota). Setting the
+ * source `maxzoom` here makes MapLibre stop fetching new tiles past
+ * z=16 and overzoom (stretch) z=16 tiles for closer views — the
+ * standard pattern for raster sources backed by a hard server cap.
+ */
+const EOSDA_RENDER_MAX_ZOOM = 16;
+
 export type NdviLayerProps = {
   fieldId: string;
   /**
@@ -107,9 +117,30 @@ export type NdviLayerProps = {
    * (`## Token-ready gate`) for why.
    */
   isAuthReady: boolean;
+  /**
+   * Field-polygon bbox `[west, south, east, north]`. Forwarded to the
+   * raster source as MapLibre's `bounds` property so MapLibre never
+   * issues tile requests for tiles that don't intersect the field. At
+   * low zoom levels (or when the user pans far away) this is the
+   * difference between 1–2 backend round-trips per zoom level vs
+   * dozens — EOSDA's per-key 429 quota will start tripping inside a
+   * few seconds without it. See MapLibre `raster.bounds` spec.
+   */
+  bounds: [number, number, number, number];
+  /**
+   * Current value of `fields.eosda_cropper_ref` for this field, or
+   * `null` while warm-up is still resolving it. Folded into the tile
+   * URL as a `&v=<hash|pending>` cache-buster so the moment the column
+   * flips from NULL → hash, every subsequent tile request lands at a
+   * new URL — evicting any un-clipped fallback tiles from MapLibre's
+   * in-memory cache and the browser HTTP cache without requiring a
+   * hard refresh. The proxy strips this param via zod (it never
+   * reaches EOSDA upstream).
+   */
+  cropperRef: string | null;
 };
 
-export function NdviLayer({ fieldId, isAuthReady }: NdviLayerProps) {
+export function NdviLayer({ fieldId, isAuthReady, bounds, cropperRef }: NdviLayerProps) {
   const { map, isStyleReady, styleEpoch } = useMapContext();
 
   // Multi-slice read wrapped in `useShallow` so unrelated `useUiStore`
@@ -143,11 +174,19 @@ export function NdviLayer({ fieldId, isAuthReady }: NdviLayerProps) {
     }
 
     const apiBase = env.VITE_API_BASE_URL.replace(/\/+$/, '');
+    // `v` is a stable cache key derived from the cropper hash: as soon
+    // as warm-up finishes and the hash appears in the field DTO, the
+    // tile URL changes and MapLibre treats every tile as new — no more
+    // stale un-clipped tiles served from cache. While the hash is still
+    // pending we use a fixed sentinel so MapLibre still dedupes within
+    // that window.
+    const cropperVersion = cropperRef ?? 'pending';
     const tileUrl =
       `${apiBase}/api/eosda/render/{z}/{x}/{y}` +
       `?fieldId=${fieldId}` +
       `&viewId=${encodeURIComponent(selectedViewId)}` +
-      `&band=${selectedIndex}`;
+      `&band=${selectedIndex}` +
+      `&v=${cropperVersion}`;
 
     const beforeId = findFirstSymbolLayerId(map);
 
@@ -164,6 +203,18 @@ export function NdviLayer({ fieldId, isAuthReady }: NdviLayerProps) {
       type: 'raster',
       tiles: [tileUrl],
       tileSize: 256,
+      // Hard ceiling: EOSDA caps S2 derived-index tiles at z=16 (z≥17
+      // returns 422 "Max zoom exceed"). MapLibre overzooms z=16 tiles
+      // for closer views — the standard pattern for raster sources
+      // backed by a hard server cap.
+      maxzoom: EOSDA_RENDER_MAX_ZOOM,
+      // Critical quota guard: without `bounds`, MapLibre requests every
+      // tile in the visible viewport — dozens at low zoom levels, each
+      // a backend round-trip to EOSDA. With `bounds` set to the field
+      // bbox, MapLibre only requests tiles that intersect the polygon
+      // (1–4 tiles for a small field at any zoom level), keeping us
+      // well under the per-key rate limit during pan/zoom.
+      bounds,
       attribution: 'Imagery © EOSDA / Sentinel-2',
     });
 
@@ -207,6 +258,8 @@ export function NdviLayer({ fieldId, isAuthReady }: NdviLayerProps) {
     selectedIndex,
     isAuthReady,
     isViewIdValidForField,
+    bounds,
+    cropperRef,
   ]);
 
   // 2. Opacity-only effect — push the new value with `setPaintProperty`,

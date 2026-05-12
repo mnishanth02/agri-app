@@ -17,7 +17,10 @@
  *      to the mocked PNG, and that the upstream URL we composed carries
  *      the `CALIBRATE=1` / per-band `COLORMAP` / decoded `view_id`
  *      (literal `/`, not `%2F`) / `cropper_ref` query parameters.
- *   5. Cache headers — `Cache-Control: private, max-age=86400`.
+ *   5. Cache headers — cropper-bound tiles get `private, max-age=86400`;
+ *      the un-clipped fallback (no `cropper_ref` yet) gets `private,
+ *      no-store` so a tile fetched during the warm-up race never
+ *      poison-caches the browser for 24 h.
  *   6. Upstream failure handling — non-2xx is mirrored to the client
  *      with an EMPTY body so the upstream HTML/error page (which can
  *      echo the request URL when `useQueryAuth` is on) is never
@@ -486,6 +489,25 @@ describe('GET /api/eosda/render/:z/:x/:y — happy path without cropper_ref', ()
     // The other required params are still set unconditionally.
     expect(url.searchParams.get('CALIBRATE')).toBe('1');
     expect(url.searchParams.get('COLORMAP')).toBe('RdYlGn');
+  });
+
+  it('returns Cache-Control: private, no-store for the un-clipped fallback', async () => {
+    // The un-clipped tile is a transient response — warm-up is racing to
+    // populate `eosda_cropper_ref` and the next request after it lands
+    // MUST re-fetch and pick up the clipped variant. Without `no-store`,
+    // browsers and MapLibre's tile cache would pin the un-clipped PNG
+    // for 24 h and the user would see NDVI bleed past the polygon until
+    // the cache expired.
+    captureFetch(new Response(PNG_1x1, { status: 200 }));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/eosda/render/10/611/354?fieldId=${fieldId}&viewId=${encodeURIComponent(VIEW_ID)}&band=NDVI`,
+      headers: { 'x-test-user-id': USER_RENDER },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, no-store');
   });
 });
 
