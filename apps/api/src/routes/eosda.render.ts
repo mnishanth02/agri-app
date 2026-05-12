@@ -165,14 +165,12 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
           eosdaCropperRef: null,
         },
         { db, log },
-      ).catch((err) => {
-        log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
-      });
+      );
 
-      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<'timeout'>((resolve) => {
-        timer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
-        timer.unref?.();
+        timeoutTimer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
+        timeoutTimer.unref?.();
       });
       try {
         const outcome = await Promise.race([
@@ -186,7 +184,7 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
           );
         }
       } finally {
-        if (timer) clearTimeout(timer);
+        if (timeoutTimer) clearTimeout(timeoutTimer);
       }
     } catch (err) {
       log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
