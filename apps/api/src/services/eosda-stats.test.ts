@@ -10,7 +10,8 @@
  *   - `average` → `mean` rename.
  *   - `std`/`variance`/`q1`/`q3` are intentionally discarded.
  *   - Unknown index keys (e.g. EOSDA returns `MSAVI` we don't handle) are skipped.
- *   - `errors` array surfaces as a thrown `Error`.
+ *   - `errors` array with no result throws; `errors` alongside a result
+ *     are surfaced as warnings while the successful scenes are returned.
  *
  * Style — matches `eosda-search.test.ts`:
  *   - `vi.stubGlobal('fetch', spy)` exercises the real `eosdaRequest`.
@@ -322,10 +323,10 @@ describe('runMtStats — response normalisation', () => {
 });
 
 describe('runMtStats — errors and timeout', () => {
-  it('throws when poll response has non-empty errors[]', async () => {
+  it('throws when poll response has errors[] and no result', async () => {
     setupSequentialFetch([
       jsonResponse(200, { task_id: 't', task_timeout: 60 }),
-      jsonResponse(200, { errors: ['boom'], result: [] }),
+      jsonResponse(200, { errors: ['boom'] }),
     ]);
 
     await expect(
@@ -336,6 +337,69 @@ describe('runMtStats — errors and timeout', () => {
         dateRange: { from: '2024-01-01', to: '2024-01-31' },
       }),
     ).rejects.toThrow(/failed with 1 error/);
+  });
+
+  it('returns successful rows when poll has both errors[] and result[] (per-scene errors)', async () => {
+    // Real-world EOSDA behaviour: one scene fully clouded → reported in
+    // `errors[]`, but the other scenes still produce usable rows in
+    // `result[]`. The wrapper must not let a per-scene error nuke the
+    // entire task.
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    setupSequentialFetch([
+      jsonResponse(200, { task_id: 't', task_timeout: 60 }),
+      jsonResponse(200, {
+        errors: [
+          {
+            scene_id: 'S2B_clouded',
+            view_id: 'S2/43/P/ET/2026/3/6/1',
+            date: '2026-03-06',
+            error: 'AOI contains clouds only',
+          },
+        ],
+        result: [
+          {
+            scene_id: 'S2B_good',
+            view_id: 'S2/43/P/ET/2026/4/30/0',
+            date: '2026-04-30',
+            cloud: 5,
+            indexes: { NDVI: { average: 0.42, median: 0.4, min: 0.1, max: 0.7 } },
+          },
+        ],
+      }),
+    ]);
+
+    const rows = await runMtStats({
+      fieldId: 'f',
+      geometry: VALID_POLYGON,
+      indexes: ['NDVI'],
+      dateRange: { from: '2026-02-01', to: '2026-05-01' },
+      log,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.viewId).toBe('S2/43/P/ET/2026/4/30/0');
+    expect(rows[0]?.mean).toBe(0.42);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn.mock.calls[0]?.[1]).toMatch(/per-scene error/);
+  });
+
+  it('returns empty rows when poll has errors[] and an empty result[]', async () => {
+    // A complete task whose only outcome is that every requested scene
+    // failed (e.g. all dates clouded) should not 502 — return [] and let
+    // the route surface "no stats for this window" to the client.
+    setupSequentialFetch([
+      jsonResponse(200, { task_id: 't', task_timeout: 60 }),
+      jsonResponse(200, { errors: ['only-clouds'], result: [] }),
+    ]);
+
+    const rows = await runMtStats({
+      fieldId: 'f',
+      geometry: VALID_POLYGON,
+      indexes: ['NDVI'],
+      dateRange: { from: '2024-01-01', to: '2024-01-31' },
+    });
+
+    expect(rows).toEqual([]);
   });
 
   it('throws StatsTimeoutError when polling exceeds 60s', async () => {

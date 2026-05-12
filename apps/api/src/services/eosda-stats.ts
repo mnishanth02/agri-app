@@ -312,11 +312,23 @@ export async function runMtStats(opts: RunMtStatsOptions): Promise<NdviStatsRow[
       ...(log ? { log } : {}),
     });
 
-    if (Array.isArray(poll.errors) && poll.errors.length > 0) {
-      throw new Error(`eosda mt_stats: task ${taskId} failed with ${poll.errors.length} error(s)`);
+    const hasErrors = Array.isArray(poll.errors) && poll.errors.length > 0;
+    const hasResult = poll.result !== undefined && poll.result !== null;
+
+    // EOSDA reports per-scene problems (e.g. "AOI contains clouds only")
+    // in `errors[]` even when the task completes with usable rows for
+    // other scenes. Treating any `errors[]` as fatal would mask the
+    // partial success and force a 502. Per-scene errors are non-fatal —
+    // we log them and proceed with whatever `result` rows are available.
+    // A task with only `errors[]` and no `result` is a true failure.
+    if (hasErrors) {
+      log?.warn(
+        { taskId, errors: poll.errors },
+        'eosda mt_stats: task returned per-scene error(s); continuing with successful scenes',
+      );
     }
 
-    if (poll.result !== undefined && poll.result !== null) {
+    if (hasResult) {
       if (!Array.isArray(poll.result)) {
         throw new Error(`eosda mt_stats: task ${taskId} returned non-array result`);
       }
@@ -325,6 +337,14 @@ export async function runMtStats(opts: RunMtStatsOptions): Promise<NdviStatsRow[
         rows.push(...mapSceneRow(scene, idx));
       });
       return rows;
+    }
+
+    if (hasErrors) {
+      // Terminal failure: errors with no result.
+      const preview = JSON.stringify(poll.errors).slice(0, 500);
+      throw new Error(
+        `eosda mt_stats: task ${taskId} failed with ${(poll.errors as unknown[]).length} error(s) and no result: ${preview}`,
+      );
     }
 
     const remainingMs = deadlineMs - Date.now();
