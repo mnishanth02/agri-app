@@ -149,7 +149,7 @@ export function AnalysisLayout({ field }: AnalysisLayoutProps) {
           {/* top-right — clears the 64 px right rail at right-3 */}
           <div className="pointer-events-auto absolute top-3 right-20 flex items-center gap-2">
             <GetOverviewButton />
-            <FieldSwitcherChip />
+            <FieldSwitcherChip field={field} />
           </div>
 
           {/* left middle: scale bar, coords, zoom column, cloud toast */}

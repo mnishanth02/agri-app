@@ -64,8 +64,8 @@ import {
   type VegetationIndex,
 } from '@viz-crop/shared';
 import { useEffect } from 'react';
-import { toast } from 'sonner';
 import { ApiError, apiFetch } from '@/lib/api';
+import { notifyError } from '@/lib/notify';
 import { eosdaKeys, useEosdaScenes } from './useEosdaScenes';
 
 const TEN_MINUTES = 10 * 60 * 1000;
@@ -162,10 +162,10 @@ export function useEosdaStats(args: UseEosdaStatsArgs): UseQueryResult<EosdaStat
     const lastToasted = lastToastedFailureCountByKey.get(queryKeyHash) ?? 0;
     if (isError && !isFetching && error && failureCount > lastToasted) {
       lastToastedFailureCountByKey.set(queryKeyHash, failureCount);
-      const message = is504(error)
-        ? 'Statistics took too long to compute. Please try again in a moment.'
-        : ((error as Error).message ?? 'Failed to load statistics.');
-      toast.error(message);
+      // 504 already maps to STATS_TIMEOUT inside `notifyError` via the
+      // `ApiError.body.error` sentinel that `eosda.stats.ts` returns —
+      // no inline branch needed here.
+      notifyError(error, { fallback: 'Failed to load statistics.' });
     }
     if (!isError) {
       lastToastedFailureCountByKey.delete(queryKeyHash);

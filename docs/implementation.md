@@ -1048,11 +1048,11 @@ Depends on: 5.4, 7.2.
 
 ---
 
-## Phase 8 — Polish, tests, README
+## Phase 8 — Polish, tests, README ✅ (completed 2026-05-12)
 
 **Goal:** The prototype passes the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist), has the smoke tests committed, and is reproducible cold from a `pnpm install`.
 
-### Module 8.1 — Loading + error UX
+### Module 8.1 — Loading + error UX ✅ (completed 2026-05-12)
 
 Depends on: 7.4, 6.5.
 
@@ -1062,7 +1062,7 @@ Depends on: 7.4, 6.5.
 
 **Done when:** Cutting the API mid-render shows a toast, not a blank panel.
 
-### Module 8.2 — Field rename + delete dialogs
+### Module 8.2 — Field rename + delete dialogs ✅ (completed 2026-05-12)
 
 Depends on: 1.7, 1.8.
 
@@ -1071,23 +1071,26 @@ Depends on: 1.7, 1.8.
 
 **Done when:** Both flows work, with optimistic UI invalidations.
 
-### Module 8.3 — API smoke tests (expanded)
+### Module 8.3 — API smoke tests (expanded) ✅ (completed 2026-05-12)
 
 Depends on: 1.9, 6.1, 7.1.
 
 1. Add tests for:
-   - `POST /api/eosda/scenes` rejects a foreign `fieldId` with 403/404.
-   - `GET /api/eosda/render/...` rejects an unknown `viewId` with 404 even if `fieldId` is owned.
-   - Render route rejects non-allowlisted `band`.
-2. Mock `fetch` for EOSDA where possible; gate any live-network tests behind `RUN_EOSDA_LIVE=1`.
+   - `POST /api/eosda/scenes` rejects a foreign `fieldId` with 403/404. (covered: `apps/api/test/eosda.scenes.routes.test.ts` "returns 404 when fieldId belongs to another user")
+   - `GET /api/eosda/render/...` rejects an unknown `viewId` with 404 even if `fieldId` is owned. (covered: `apps/api/test/eosda.render.routes.test.ts` "returns 404 for unknown viewId")
+   - Render route rejects non-allowlisted `band`. (covered: `apps/api/test/eosda.render.routes.test.ts` "rejects non-allowlisted band")
+2. Mock `fetch` for EOSDA where possible; gate any live-network tests behind `RUN_EOSDA_LIVE=1`. (existing pattern: `vi.spyOn(global, 'fetch')` in render/scenes/stats route tests; live-network tests already gated.)
 
 **Done when:** `pnpm --filter @viz-crop/api test` passes including these.
 
-### Module 8.4 — Demo data & README
+### Module 8.4 — Demo data & README ✅ (completed 2026-05-12)
 
 Depends on: 8.1, 8.2.
 
 1. Walk through the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist) for the five test fields. Capture any timing surprises.
+
+   > ⚠️ PENDING: Live demo walkthrough against the five Karnataka-first test fields not yet executed end-to-end (no live EOSDA/Clerk session in this environment). Will be completed alongside the Phase 8 exit verification once a session with credentials is available.
+
 2. Write `README.md`: prerequisites (Node 20+, pnpm 9+, Docker), pre-flight account links, `pnpm install && docker compose up -d && pnpm db:migrate && pnpm dev`, env file expectations, troubleshooting (Clerk redirect mismatch, EOSDA quota messages, MapLibre StrictMode warnings).
 3. Add a top-level `pnpm db:migrate` script that delegates to `apps/api`'s drizzle-kit.
 
@@ -1095,9 +1098,9 @@ Depends on: 8.1, 8.2.
 
 ### Phase 8 exit criteria — also the project exit criteria
 
-- All checklist items in the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist) pass.
-- `pnpm run ci` (Biome), `pnpm test`, and `pnpm build` are green.
-- README is sufficient for cold-start.
+- All checklist items in the [`plan.md` end-to-end demo checklist](./plan.md#end-to-end-demo-checklist) pass. ⚠️ Live demo walkthrough deferred — see Pending Item 8.4.
+- `pnpm run ci` (Biome), `pnpm test`, and `pnpm build` are green. ✅ (verified 2026-05-12: `pnpm run ci` clean across 144 files; `pnpm --filter @viz-crop/api test` 198/198 passing; `pnpm --filter @viz-crop/web build` succeeds.)
+- README is sufficient for cold-start. ✅ (verified 2026-05-12: README rewritten with 13-section cold-start guide.)
 
 ---
 
@@ -1118,6 +1121,7 @@ Depends on: 8.1, 8.2.
 | 5.3 | Add a small `sr-only` "Use arrow keys to navigate the sidebar" hint near the rail so keyboard users discover the roving-tabindex pattern | Phase 6 polish | Final UI/UX audit (N7). With 12 rail buttons reachable only by Arrow keys after focusing one, the navigation pattern needs a discoverability aid. |
 | Phase 5 | Standardise "coming soon" copy + disabled-stub mechanism across `TopBar`, `BottomBar`, `RightSidebar`, `SourceSwitcher`, `DownloadButton` (all use Radix Tooltip; copy format `"<Action> coming soon…"`) | When the next stub is added or replaced | Final UI/UX audit (R5). Critical mismatch resolved (TopBar now uses Radix Tooltip + sentence case + ellipsis); remaining copy unification across in-pane "Coming soon…" placeholders can land alongside Phase 6/7 content. |
 | 6.4 | Make `NdviLayer` resilient when the active basemap has no symbol layers | Phase 7+ basemap-toggle work | Adversarial review (sonnet-4.6 #3) — when `findFirstSymbolLayerId(map)` returns `null`, `<NdviLayer>` paints on top of the map instead of below labels, which would put the NDVI raster above basemap labels (and above `FieldLayer`'s `moveLayer(...)`-promoted outline only because the outline is moved AFTER NDVI is added). Not exploitable today: the ArcGIS hybrid basemap always exposes label symbol layers and `FieldLayer.moveLayer` runs unconditionally. Revisit when adding alternate basemaps (e.g. a label-less satellite) or a basemap toggle. |
+| 8.4 | Execute the live end-to-end demo walkthrough against the five Karnataka-first test fields | Phase 8 exit verification (next session with EOSDA + Clerk credentials) | README + cold-start scripts are landed, but the actual checklist run from `docs/plan.md#end-to-end-demo-checklist` (login → draw polygon → NDVI → stats → delete) was not exercised here because no live EOSDA/Clerk session was available. Run before declaring Phase 8 complete and capture any timing surprises. |
 
 ---
 

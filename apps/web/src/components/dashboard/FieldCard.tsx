@@ -43,7 +43,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDeleteField, useUpdateField } from '@/hooks/useFields';
-import { ApiError } from '@/lib/api';
+import { notifyError } from '@/lib/notify';
 
 /**
  * Dashboard field card. Renders one `FieldDto` with:
@@ -183,10 +183,7 @@ function RenameDialog({
           onOpenChange(false);
         },
         onError: (error) => {
-          toast.error('Could not rename field', {
-            description:
-              error instanceof ApiError ? `${error.status} ${error.statusText}` : error.message,
-          });
+          notifyError(error, { fallback: 'Could not rename field' });
         },
       },
     );
@@ -262,10 +259,7 @@ function DeleteAlert({
         onOpenChange(false);
       },
       onError: (error) => {
-        toast.error('Could not delete field', {
-          description:
-            error instanceof ApiError ? `${error.status} ${error.statusText}` : error.message,
-        });
+        notifyError(error, { fallback: 'Could not delete field' });
       },
     });
   };

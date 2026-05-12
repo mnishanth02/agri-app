@@ -14,7 +14,10 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check --write .",
-    "ci": "biome ci ."
+    "ci": "biome ci .",
+    "db:migrate": "pnpm --filter @viz-crop/api db:migrate",
+    "db:generate": "pnpm --filter @viz-crop/api db:generate",
+    "db:studio": "pnpm --filter @viz-crop/api db:studio"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4"
