@@ -167,7 +167,7 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
         { db, log },
       );
 
-      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+      let timeoutTimer!: ReturnType<typeof setTimeout>;
       const timeout = new Promise<'timeout'>((resolve) => {
         timeoutTimer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
         timeoutTimer.unref();
@@ -187,7 +187,7 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
           );
         }
       } finally {
-        if (timeoutTimer) clearTimeout(timeoutTimer);
+        clearTimeout(timeoutTimer);
       }
     } catch (err) {
       log.warn({ fieldId, err }, 'render: lazy cropper-ref heal failed');
