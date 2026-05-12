@@ -40,18 +40,14 @@
  */
 
 import type { FieldDto } from '@viz-crop/shared';
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ClipboardListIcon,
-  LineChartIcon,
-  PlusIcon,
-} from 'lucide-react';
+import { ChevronDownIcon, ChevronUpIcon, ClipboardListIcon, PlusIcon } from 'lucide-react';
 import {
   type CSSProperties,
+  lazy,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -94,6 +90,10 @@ const TABS: ReadonlyArray<{ value: BottomBarTab; label: string }> = [
 const DEFAULT_TAB: BottomBarTab = 'cropInfo';
 
 const CARD_CLASS = 'rounded-md border border-white/10 bg-white/5 p-3 text-sm';
+
+const NdviChart = lazy(() =>
+  import('@/components/shell/chart/NdviChart').then((m) => ({ default: m.NdviChart })),
+);
 
 /**
  * Pixel threshold below which a pointer interaction on the grabber is
@@ -526,7 +526,9 @@ function BottomDockBody({ field }: { field: FieldDto }) {
         <CropInfoTab field={field} />
       </TabsContent>
       <TabsContent value="chart" className="mt-0 outline-none">
-        <ChartTab />
+        <Suspense fallback={<ChartTabLoading />}>
+          <NdviChart field={field} />
+        </Suspense>
       </TabsContent>
       <TabsContent value="activities" className="mt-0 outline-none">
         <ActivitiesTab />
@@ -604,13 +606,14 @@ function PlaceholderCard({ title, children }: { title: string; children: ReactNo
   );
 }
 
-function ChartTab() {
+function ChartTabLoading() {
   return (
-    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
-      <LineChartIcon aria-hidden="true" className="size-7 text-white/40" />
-      <p className="text-sm text-white/85">NDVI trend chart — coming soon.</p>
-      <p className="text-white/55 text-xs">Mean index across all cached scenes will plot here.</p>
-    </div>
+    <output
+      aria-live="polite"
+      className="flex h-full min-h-[200px] items-center justify-center text-white/55 text-xs"
+    >
+      Loading chart…
+    </output>
   );
 }
 

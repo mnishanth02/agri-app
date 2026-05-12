@@ -1028,7 +1028,7 @@ Depends on: 5.3, 7.2.
 
 **Done when:** The pane shows realistic numbers and re-renders on date/index switches; loading/empty/error states render appropriately.
 
-### Module 7.4 — Chart tab
+### Module 7.4 — Chart tab ✅ (completed 2026-05-12)
 
 Depends on: 5.4, 7.2.
 
