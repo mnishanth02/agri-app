@@ -32,3 +32,19 @@ export function findFirstSymbolLayerId(map: MaplibreMap): string | null {
   }
   return null;
 }
+
+/**
+ * True iff `map` still has a live MapLibre style. After `map.remove()` the
+ * internal `style` is disposed and any source/layer call throws
+ * `Cannot read properties of undefined (reading 'getLayer'/'getSource')`.
+ *
+ * Cleanup effects on overlay components (FieldLayer, NdviLayer, …) that may
+ * run *after* the parent `<MapView>` has already torn the map down — the
+ * route-unmount race — gate on this so they no-op rather than throwing into
+ * the route error boundary. The same defensive guard is mirrored inline in
+ * `FieldLayer.tsx` (Module 3.3, predates this helper); newer overlays
+ * should import from here.
+ */
+export function isMapAlive(map: MaplibreMap): boolean {
+  return (map as unknown as { style?: unknown }).style != null;
+}

@@ -20,7 +20,8 @@
  *      out of production logs. See `docs/review-findings.md` §3.5.2.
  *
  * Intentionally does NOT handle:
- *   - Render tile responses (binary, non-JSON) — Module 6.3 proxies those.
+ *   - Render tile responses (binary, non-JSON) — Module 6.3 uses the sibling
+ *     `eosdaFetch` for those; this function would mis-frame the body as JSON.
  *   - Retries / rate-limit back-off — left for a future cross-cutting
  *     concern once we have measured EOSDA's actual quota behaviour.
  */
@@ -217,10 +218,76 @@ export async function eosdaRequest<T>(path: string, options: EosdaRequestOptions
 }
 
 /**
+ * Issue a raw fetch against `EOSDA_BASE + path` and return the `Response`
+ * untouched. Use for binary endpoints where the caller needs to stream or
+ * forward the body verbatim — chiefly the Render API tile proxy in Module
+ * 6.3 — and where `response.json()` would be wrong.
+ *
+ * Reuses every security guard `eosdaRequest` enforces:
+ *   - `assertSafePath` (rejects `api_key=` smuggling, control chars, URL
+ *     fragments, off-origin host injection, unparseable paths).
+ *   - Header-auth wiring: `x-api-key` is set from `env.EOSDA_API_KEY`
+ *     unless `useQueryAuth` flips to the `?api_key=` fallback. Callers
+ *     that want a different auth shape are deliberately not supported —
+ *     this is the single source of EOSDA auth.
+ *   - Sanitised logging: only `path` and `status` reach the logger; the
+ *     full URL (which may carry the API key) and the response body are
+ *     never written. Non-2xx is logged at `error`, success at `info`.
+ *
+ * Intentionally does NOT:
+ *   - Set a default `Content-Type` (binary requests rarely need one and
+ *     blindly setting `application/json` would mis-frame any caller body).
+ *   - Read or parse the response body. The caller decides whether to
+ *     `.arrayBuffer()`, `.body` stream, or discard the response.
+ *   - Map non-2xx to an `EosdaError`. The route-level handler (M6.3)
+ *     wants to mirror the upstream status without leaking the upstream
+ *     body, so it inspects `response.ok` itself.
+ */
+export async function eosdaFetch(
+  path: string,
+  options: EosdaRequestOptions = {},
+): Promise<Response> {
+  const { useQueryAuth = false, log, headers: callerHeaders, ...init } = options;
+
+  assertSafePath(path);
+  const logPath = sanitisePathForLog(path);
+
+  const headers = new Headers(callerHeaders);
+
+  let requestPath = path;
+  if (useQueryAuth) {
+    headers.delete('x-api-key');
+    requestPath = withQueryApiKey(path, env.EOSDA_API_KEY);
+  } else {
+    headers.set('x-api-key', env.EOSDA_API_KEY);
+  }
+
+  const url = `${EOSDA_BASE}${requestPath}`;
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (cause) {
+    log?.error({ path: logPath, err: cause }, 'eosda fetch failed');
+    throw cause;
+  }
+
+  if (response.ok) {
+    log?.info({ path: logPath, status: response.status }, 'eosda ok');
+  } else {
+    log?.error({ path: logPath, status: response.status }, 'eosda non-2xx');
+  }
+
+  return response;
+}
+
+/**
  * Object-style alias matching the spec wording in `docs/implementation.md`
  * §4.1 ("`eosda.request(path, init)`"). Re-exports `eosdaRequest` so callers
- * may import either shape without churn.
+ * may import either shape without churn. `fetch` is exposed alongside it for
+ * the Module 6.3 Render proxy and any future binary endpoints.
  */
 export const eosda = {
   request: eosdaRequest,
+  fetch: eosdaFetch,
 };

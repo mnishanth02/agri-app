@@ -10,6 +10,12 @@
  * the live MapLibre instance (`CoordsBadge`, `ScaleBar`, `ZoomControls`,
  * `FullscreenButton`) can call `useMapContext()`. Tooltips/Popovers
  * rely on the app-wide `<TooltipProvider>` mounted in `routes/__root.tsx`.
+ *
+ * Module 6.5 — accepts a `fieldId` prop and forwards it to
+ * `<CloudHiddenToast>` so the toast can subscribe to the per-field
+ * `useEosdaScenes` query and show the live "X scenes hidden by cloud
+ * cover" count. The prop chain is kept shallow and explicit rather
+ * than introducing a Context (only one consumer needs the field).
  */
 
 import { CloudHiddenToast } from './CloudHiddenToast';
@@ -18,14 +24,18 @@ import { FullscreenButton } from './FullscreenButton';
 import { ScaleBar } from './ScaleBar';
 import { ZoomControls } from './ZoomControls';
 
-export function MapOverlays() {
+export type MapOverlaysProps = {
+  fieldId: string;
+};
+
+export function MapOverlays({ fieldId }: MapOverlaysProps) {
   return (
     <>
       <CoordsBadge />
       <ScaleBar />
       <ZoomControls />
       <FullscreenButton />
-      <CloudHiddenToast />
+      <CloudHiddenToast fieldId={fieldId} />
     </>
   );
 }

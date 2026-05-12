@@ -22,7 +22,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../env.js';
-import { EOSDA_BASE, EosdaError, eosda, eosdaRequest } from './eosda-client.js';
+import { EOSDA_BASE, EosdaError, eosda, eosdaFetch, eosdaRequest } from './eosda-client.js';
 
 interface CapturedRequest {
   url: string;
@@ -388,6 +388,212 @@ describe('eosdaRequest — logging contract', () => {
     if (!errorCall) throw new Error('log.error was not called');
     const [payload] = errorCall;
     expect(payload.path).toBe('/api/render/cropper/');
+    expect(payload.err).toBe(cause);
+  });
+});
+
+/**
+ * Module 6.3 sibling — `eosdaFetch` returns the raw `Response` so the
+ * Render proxy can stream binary PNG bodies back to MapLibre. The tests
+ * below mirror the security/logging contract assertions from
+ * `eosdaRequest` since both share the same `assertSafePath` + header-auth
+ * + sanitised-log code path. Anything regressed in the shared helpers
+ * has to fail in BOTH suites for us to notice — that's the point.
+ */
+describe('eosdaFetch — request construction', () => {
+  it('hits EOSDA_BASE + path with the x-api-key header by default', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const { calls } = captureFetch(
+      new Response(png, { status: 200, headers: { 'Content-Type': 'image/png' } }),
+    );
+
+    const res = await eosdaFetch('/api/render/S2/16/T/EL/2023/7/31/0/NDVI/10/611/354?CALIBRATE=1');
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/png');
+    // The Response is returned untouched — the body is still readable.
+    const body = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(body)).toEqual(Array.from(png));
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error('fetch was not called');
+    expect(call.url).toBe(
+      `${EOSDA_BASE}/api/render/S2/16/T/EL/2023/7/31/0/NDVI/10/611/354?CALIBRATE=1`,
+    );
+    const headers = new Headers(call.init?.headers);
+    expect(headers.get('x-api-key')).toBe(env.EOSDA_API_KEY);
+    // Header-auth path must NOT smuggle the key into the URL.
+    expect(call.url).not.toContain('api_key=');
+    // Unlike `eosdaRequest`, no Content-Type default is injected — binary
+    // GETs have no body, and forcing `application/json` would mis-frame
+    // any future POST caller that uses `eosdaFetch`.
+    expect(headers.get('Content-Type')).toBeNull();
+  });
+
+  it('exposes the same function via the `eosda.fetch` namespace', async () => {
+    captureFetch(new Response('x', { status: 200 }));
+    const res = await eosda.fetch('/api/x');
+    expect(res.status).toBe(200);
+  });
+
+  it('preserves caller headers without overriding x-api-key', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await eosdaFetch('/api/x', { headers: { Accept: 'image/png' } });
+
+    const call = calls[0];
+    if (!call) throw new Error('fetch was not called');
+    const headers = new Headers(call.init?.headers);
+    expect(headers.get('Accept')).toBe('image/png');
+    expect(headers.get('x-api-key')).toBe(env.EOSDA_API_KEY);
+  });
+
+  it('returns non-2xx responses without throwing — caller decides how to handle', async () => {
+    captureFetch(new Response('upstream error html', { status: 502 }));
+
+    const res = await eosdaFetch('/api/render/S2/16/T/EL/x/NDVI/10/0/0');
+
+    // Critically: NOT an EosdaError. The route layer maps status codes itself
+    // and never forwards the upstream body (which may echo the request URL
+    // with an api_key= fallback or render an HTML error page).
+    expect(res.status).toBe(502);
+  });
+});
+
+describe('eosdaFetch — query-auth fallback', () => {
+  it('moves the key to ?api_key=… and removes the x-api-key header when useQueryAuth=true', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await eosdaFetch('/api/render/something', { useQueryAuth: true });
+
+    const call = calls[0];
+    if (!call) throw new Error('fetch was not called');
+    const expectedKey = encodeURIComponent(env.EOSDA_API_KEY);
+    expect(call.url).toBe(`${EOSDA_BASE}/api/render/something?api_key=${expectedKey}`);
+    const headers = new Headers(call.init?.headers);
+    expect(headers.has('x-api-key')).toBe(false);
+  });
+});
+
+describe('eosdaFetch — security guards (assertSafePath canaries)', () => {
+  it('refuses a path that contains an `api_key` query param', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await expect(eosdaFetch('/api/render/x?api_key=leak')).rejects.toThrow(/do not put `api_key`/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses percent-encoded `api_key` query names', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await expect(eosdaFetch('/api/render/x?%61pi_key=leak')).rejects.toThrow(
+      /do not put `api_key`/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses paths containing control characters', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await expect(eosdaFetch('/api/x\r\nHost: evil.com')).rejects.toThrow(/control character/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses URL fragments', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await expect(eosdaFetch('/api/x#frag')).rejects.toThrow(/URL fragments are not allowed/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses paths that resolve off-origin (host-injection guard)', async () => {
+    const { calls } = captureFetch(new Response(null, { status: 200 }));
+
+    await expect(eosdaFetch('.evil.com/x')).rejects.toThrow(/must start with a single/);
+    await expect(eosdaFetch('//evil.com/x')).rejects.toThrow(/must start with a single/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not mention EOSDA_API_KEY in any rejection message (no-leak canary)', async () => {
+    const messages: string[] = [];
+    for (const bad of [
+      '/api/x?api_key=leak',
+      '/api/x?%61pi_key=leak',
+      '/api/x#frag',
+      '/api/x\r\n',
+      '/api/x\x00',
+      '%',
+      '.evil.com/x',
+      '//evil.com/x',
+    ]) {
+      const err = await eosdaFetch(bad, { useQueryAuth: true }).catch((e: unknown) => e);
+      messages.push((err as Error).message);
+    }
+    const blob = messages.join('|');
+    expect(blob).not.toContain(env.EOSDA_API_KEY);
+  });
+});
+
+describe('eosdaFetch — logging contract', () => {
+  it('logs only path + status on success (never the full URL)', async () => {
+    captureFetch(new Response(null, { status: 200 }));
+    const log = makeLogger();
+
+    await eosdaFetch('/api/render/S2/16/T/EL/x/NDVI/10/0/0?CALIBRATE=1', { log });
+
+    expect(log.info).toHaveBeenCalledTimes(1);
+    expect(log.error).not.toHaveBeenCalled();
+    const infoCall = log.info.mock.calls[0];
+    if (!infoCall) throw new Error('log.info was not called');
+    const [payload] = infoCall;
+    expect(payload).toEqual({
+      path: '/api/render/S2/16/T/EL/x/NDVI/10/0/0',
+      status: 200,
+    });
+  });
+
+  it('logs only path + status on non-2xx (no body, no full URL, no api_key)', async () => {
+    captureFetch(new Response('html error page with secret', { status: 401 }));
+    const log = makeLogger();
+
+    await eosdaFetch('/api/render/x?CALIBRATE=1', { useQueryAuth: true, log });
+
+    expect(log.error).toHaveBeenCalledTimes(1);
+    const errorCall = log.error.mock.calls[0];
+    if (!errorCall) throw new Error('log.error was not called');
+    const [payload] = errorCall;
+    expect(payload).toEqual({ path: '/api/render/x', status: 401 });
+
+    const allLogPayloads = [
+      ...log.info.mock.calls,
+      ...log.warn.mock.calls,
+      ...log.error.mock.calls,
+    ];
+    const serialised = JSON.stringify(allLogPayloads);
+    expect(serialised).not.toContain('api_key');
+    expect(serialised).not.toContain(env.EOSDA_API_KEY);
+    expect(serialised).not.toContain(EOSDA_BASE);
+    expect(serialised).not.toContain('html error page');
+  });
+
+  it('logs at error level when the underlying fetch rejects', async () => {
+    const cause = new TypeError('econnreset');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw cause;
+      }),
+    );
+    const log = makeLogger();
+
+    await eosdaFetch('/api/render/x', { log }).catch(() => {});
+
+    expect(log.error).toHaveBeenCalledTimes(1);
+    const errorCall = log.error.mock.calls[0];
+    if (!errorCall) throw new Error('log.error was not called');
+    const [payload] = errorCall;
+    expect(payload.path).toBe('/api/render/x');
     expect(payload.err).toBe(cause);
   });
 });

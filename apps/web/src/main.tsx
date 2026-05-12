@@ -1,7 +1,7 @@
 import { ClerkLoaded, ClerkLoading, ClerkProvider, useAuth } from '@clerk/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode, useEffect } from 'react';
+import { StrictMode, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { env } from './env';
 import { routeTree } from './routeTree.gen';
@@ -51,8 +51,22 @@ function InnerApp() {
   // `authKey` is a sentinel: the effect body intentionally doesn't read it — its
   // only purpose is to make this effect re-run when isLoaded/isSignedIn flip.
   const authKey = `${auth.isLoaded}:${auth.isSignedIn ?? 'unknown'}`;
+  // Track the previous signed-in state so we can clear the per-user
+  // TanStack Query cache when the user signs OUT. Without this, cached
+  // user-scoped responses (e.g. `useEosdaStats` keyed by fieldId) could
+  // be served synchronously to a different user who later signs in
+  // before the background refetch resolves.
+  const prevSignedInRef = useRef<boolean | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: authKey is the sentinel that triggers invalidation; removing it would only run on mount
   useEffect(() => {
+    const wasSignedIn = prevSignedInRef.current;
+    const isSignedIn = auth.isSignedIn === true;
+    if (wasSignedIn === true && !isSignedIn) {
+      // Sign-out (or session-expired). Drop every cached query so the
+      // next signed-in user can never see the previous user's data.
+      queryClient.clear();
+    }
+    prevSignedInRef.current = isSignedIn;
     void router.invalidate();
   }, [authKey]);
 

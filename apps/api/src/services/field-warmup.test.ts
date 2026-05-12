@@ -555,7 +555,9 @@ describe('warmField — defensive cropper rejection branch', () => {
     const { fieldId, db, cleanup } = await seedField();
     try {
       // Intentional: a bare pending Promise does not keep Node's event loop alive,
-      // and it models a Cropper request that never settles.
+      // and it models a Cropper request that never settles. Under the new
+      // bounded-await design (`cropperTimeoutMs`), warm-up still returns
+      // — just on the timeout branch instead of fire-and-forget.
       const neverSettlingCropper = new Promise<string | null>(() => {});
       vi.mocked(getOrCreateCropperRef).mockReturnValueOnce(neverSettlingCropper);
       const scene = makeSearchScene({ sceneID: 'S2B_hung_cropper', view_id: 'view/hung/01' });
@@ -564,7 +566,9 @@ describe('warmField — defensive cropper rejection branch', () => {
       });
       const log = makeLogger();
 
-      await expect(warmField(fieldId, { db, log })).resolves.toBeUndefined();
+      // 50 ms is plenty for the search-side mock to resolve and the upsert
+      // to write; the cropper-pending promise will hit the timeout and warn.
+      await expect(warmField(fieldId, { db, log, cropperTimeoutMs: 50 })).resolves.toBeUndefined();
 
       const rows = await readCachedScenes(db, fieldId);
       expect(rows).toHaveLength(1);
@@ -572,6 +576,12 @@ describe('warmField — defensive cropper rejection branch', () => {
       expect(
         log.error.mock.calls.find(([, msg]) => msg === 'warm-up: cropper rejected unexpectedly'),
       ).toBeUndefined();
+      // Timeout branch produces a structured warn so operators can see
+      // when EOSDA Cropper is wedged.
+      const timeoutWarn = log.warn.mock.calls.find(
+        ([, msg]) => msg === 'warm-up: cropper still pending after timeout; continuing without it',
+      );
+      expect(timeoutWarn?.[0]).toMatchObject({ fieldId, timeoutMs: 50 });
     } finally {
       await cleanup();
     }

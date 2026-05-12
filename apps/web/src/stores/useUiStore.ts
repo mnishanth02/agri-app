@@ -133,6 +133,14 @@ export type UiStoreState = {
    * top-edge grabber to resize.
    */
   bottomDockHeightVh: number;
+  /**
+   * Module 6.5 — when `false` (default), `DateTimeline` filters out
+   * best-per-date scenes whose `cloudPercent > 50` and
+   * `CloudHiddenToast` shows the "X scenes hidden by cloud cover"
+   * affordance. The currently selected chip is ALWAYS rendered even
+   * when cloudy (rubber-duck #8 — never hide the active selection).
+   */
+  showCloudyScenes: boolean;
 };
 
 export type UiStoreActions = {
@@ -153,6 +161,14 @@ export type UiStoreActions = {
    * drags below the minimum.
    */
   setBottomDockHeightVh: (vh: number) => void;
+  /**
+   * Toggle whether `DateTimeline` includes cloudy (best-per-date
+   * `cloudPercent > 50`) scenes. Accepts either a value or an updater
+   * function so the "Show all" affordance in `CloudHiddenToast` and a
+   * future "Hide" toggle in `DateTimeline` can both flip it without
+   * an extra read.
+   */
+  setShowCloudyScenes: (next: boolean | ((prev: boolean) => boolean)) => void;
 };
 
 export type UiStore = UiStoreState & UiStoreActions;
@@ -164,6 +180,7 @@ const INITIAL_STATE: UiStoreState = {
   activeSidebarItem: 'sample',
   bottomBarTab: null,
   bottomDockHeightVh: BOTTOM_DOCK_DEFAULT_VH,
+  showCloudyScenes: false,
 };
 
 export const useUiStore = create<UiStore>()((set) => ({
@@ -174,4 +191,8 @@ export const useUiStore = create<UiStore>()((set) => ({
   setActiveSidebarItem: (item) => set({ activeSidebarItem: item }),
   setBottomBarTab: (tab) => set({ bottomBarTab: tab }),
   setBottomDockHeightVh: (vh) => set({ bottomDockHeightVh: vh }),
+  setShowCloudyScenes: (next) =>
+    set((state) => ({
+      showCloudyScenes: typeof next === 'function' ? next(state.showCloudyScenes) : next,
+    })),
 }));

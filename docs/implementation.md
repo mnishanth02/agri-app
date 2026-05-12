@@ -665,8 +665,19 @@ Depends on: 1.6, 4.5.
 > 1. **`assertSafePath` (eosda-client.ts)** — added control-character rejection (`\x00–\x1f`, `\x7f`) and a post-`URL`-parse `searchParams.has('api_key')` check that catches percent-encoded smuggling like `%61pi_key=` or `api%5fkey=` that the literal regex never sees.
 > 2. **`searchScenes` (eosda-search.ts)** — coerce missing/null `results` to `[]` so genuine no-coverage from EOSDA cleanly enters Module 4.5's fallback widening; still throws on present-but-non-array shapes to defend against silent garbage coercion.
 > 3. **`warmField` upsert catch (field-warmup.ts)** — recognise SQLSTATE `23503` (foreign_key_violation) on `upsertScenes` as a benign delete-after-create race (user deleted the field while warm-up was in flight); log at `info` instead of letting Module 4.6's outer `.catch(...)` log it as `'warm failed'`. The check walks Drizzle's `DrizzleQueryError.cause` chain because Drizzle 0.45 wraps every pg error.
->
 > Test coverage delta: 98 → 102 tests (added encoded-api_key, control-char, search empty-results coercion, FK-23503 race, and non-23503 propagation). All pass; `pnpm check` and `pnpm run ci` green.
+
+> 🔧 Phase 4 cropper-persistence reliability fix (2026-05-12) — three changes after live debugging found ALL 9 dev-DB rows had `eosda_cropper_ref = NULL` despite Module 4.6 being marked complete:
+> 1. **`field-warmup.ts`** — replaced fire-and-forget `void getOrCreateCropperRef(...)` with an awaited `Promise.all` that bounds cropper at `cropperTimeoutMs` (default 30 s, exported as `DEFAULT_CROPPER_TIMEOUT_MS`). Root cause: the detached promise was being killed by `tsx watch` dev-server restarts within ~1 s of field creation, before the DB UPDATE could land. Awaiting holds the warm-up function alive until the UPDATE commits; the timeout is a safety valve so a wedged EOSDA endpoint can't stall warm-up forever (warns and continues).
+> 2. **`eosda-cropper.ts`** — added INFO log `'cropper persisted'` on successful UPDATE so future regressions are visible in logs without DB inspection.
+> 3. **`routes/eosda.render.ts`** — added lazy self-heal: when a tile request finds `cropper_ref` NULL, kick `getOrCreateCropperRef(...)` in the background (with an in-process Set guard to dedupe concurrent kicks) so the next tile request will be properly clipped. Current tile is served scene-wide as graceful fallback. Defense-in-depth against any future warm-up regression.
+> Dev-DB recovery: pre-existing rows were truncated rather than backfilled (project is pre-production, no migration needed). Verified end-to-end via direct upstream probe: cropper POST returns `7b8df71295f951cf3526bcd2fb92a366` for the test polygon, render with that hash returns 90.6% transparent at z=16 (clipped to polygon).
+
+> 🔧 NDVI tile-clipping & request-flood fix (2026-05-12) — three changes after a user report that "the index is not getting applied to the selected polygon" (NDVI bleeding past the field) and "we're getting too many requests rate limit when I zoom out". Direct EOSDA probe with the persisted `cropper_ref` returned a 334-byte 100% transparent PNG for tiles outside the polygon — proving the upstream cropper mechanism worked. The bug was on the proxy + client side:
+> 1. **`routes/eosda.render.ts`** — split `Cache-Control` by branch. Cropper-bound tiles still get `private, max-age=86400` (stable). The un-clipped fallback (no `cropper_ref` yet) now gets `private, no-store` so a tile fetched during the warm-up race can't poison-cache the browser for 24 h. Root cause of issue #1: the user's browser had cached an un-clipped fallback PNG from before warm-up await landed; the long max-age held that response in cache for 24 h even after the DB had the hash.
+> 2. **`components/map/NdviLayer.tsx`** — added `bounds` and `cropperRef` props; passed `bounds` to `map.addSource(...)` per [MapLibre `raster.bounds` spec](https://maplibre.org/maplibre-style-spec/sources/#raster) so MapLibre never requests tiles outside the field bbox; appended `&v=<cropperRef|pending>` to the tile URL as a cache-buster so the URL changes the moment warm-up flips the column from `NULL` → hash, evicting any stale fallback tiles without a hard refresh. The proxy strips `v` via zod (it never reaches EOSDA upstream).
+> 3. **`layouts/AnalysisLayout.tsx`** — passes the existing `bounds` (already computed from `bbox(field.geometry)`) and `field.eosdaCropperRef` to `<NdviLayer>`.
+> Test coverage delta: 154 → 155 tests (added `'private, no-store'` Cache-Control assertion for the un-clipped fallback path). Live Chrome MCP validation: tile-request count dropped from 38 (with 18× HTTP 429 + 5 ERR_ABORTED) to 2 on initial load; aggressive zoom-out (4 successive `Zoom out` clicks) issued 0 additional tile requests; visual screenshot confirms NDVI is contained inside the triangle while surroundings show raw imagery.
 
 ---
 
@@ -797,13 +808,13 @@ Drag-vs-click threshold also bumped from 4px to 8px (still snappy for mouse, abs
 
 ---
 
-## Phase 6 — NDVI tiles (Layer 4) + DateTimeline
+## Phase 6 — NDVI tiles (Layer 4) + DateTimeline ✅ (completed 2026-05-11)
 
 **Goal:** `/fields/:id` displays an NDVI heatmap clipped to the field polygon for the latest non-cloudy scene; clicking another date in the DateTimeline switches the heatmap; the IndexSwitcher swaps to EVI / NDWI.
 
 **Phase entry:** Phase 4 complete (so cached scenes exist) and Phase 5 complete (so the timeline shell is on screen).
 
-### Module 6.1 — `POST /api/eosda/scenes`
+### Module 6.1 — `POST /api/eosda/scenes` ✅ (completed 2026-05-11)
 
 Depends on: 4.4, 1.6.
 
@@ -815,7 +826,9 @@ Depends on: 4.4, 1.6.
 
 **Done when:** Calling the route returns the latest warm-up scene immediately, refreshes/expands the timeline metadata when needed, and still returns no direct EOSDA URLs or API keys to the browser.
 
-### Module 6.2 — `useEosdaScenes` hook
+**Adversarial review fixes (Phase 6 wave-A, gpt-5.5):** When the caller passes only `dateRange.to`, the default `from` is now anchored on the resolved `to` (not on `now`), so requesting `{ to: '2024-01-01' }` produces a 90-day window ending on that date instead of skipping the requested date entirely. New regression test in `apps/api/test/eosda.scenes.routes.test.ts`.
+
+### Module 6.2 — `useEosdaScenes` hook ✅ (completed 2026-05-11)
 
 Depends on: 6.1, 0.7.
 
@@ -823,9 +836,16 @@ Depends on: 6.1, 0.7.
 2. `staleTime: 60 * 60 * 1000` (1 h) per [`plan.md` TanStack Query cache defaults](./plan.md#tanstack-query-cache-defaults).
 3. Auto-select the newest scene with cloud < 30% by writing to `useUiStore.selectedViewId` on first successful load (only if `selectedViewId` is unset). If no low-cloud scene exists, select the newest scene and let the timeline mark it as cloudy.
 
+> ✅ RESOLVED (Module 6.4, 2026-05-11): `useAutoSelectDefaultScene(field.id)` is mounted in `AnalysisLayout.tsx` immediately after the Clerk-token-ref / `transformRequest` setup, so `/fields/:id` populates `selectedViewId` as soon as `useEosdaScenes` resolves.
+
 **Done when:** Mounting `/fields/:id` populates the DateTimeline with real scene dates and selects a default.
 
-### Module 6.3 — Render proxy route
+**Adversarial review fixes (Phase 6 wave-A):**
+- gpt-5.5 BLOCKER — `useAutoSelectDefaultScene` now picks from `bestPerDate(scenes)` (shared helper in `apps/web/src/lib/scene-helpers.ts`) instead of raw scenes, so the auto-selected `viewId` is guaranteed to have a chip in `DateTimeline`. The `isCurrentValid` check uses the same best-per-date list to avoid surfacing a "valid" selection that has no visible chip.
+- sonnet-4.6 — `useEosdaScenes` now sets `retry: false` for `ApiError` 401/403 responses (kept `failureCount < 1` for everything else), so transient auth failures fail fast instead of forcing a doomed retry while the user waits.
+- sonnet-4.6 nit #4 — Removed the stale "TODO for Module 6.4 sub-agent" wiring block in the `useAutoSelectDefaultScene` JSDoc; the wiring is done.
+
+### Module 6.3 — Render proxy route ✅ (completed 2026-05-11)
 
 Depends on: 1.6, 4.4, 4.2.
 
@@ -844,7 +864,20 @@ Depends on: 1.6, 4.4, 4.2.
 
 **Done when:** A direct browser GET (with the Clerk JWT) returns a PNG tile; without ownership returns 403/404; a live smoke confirms header auth and alias rendering (`NDVI`) work before closing the module.
 
-### Module 6.4 — `NdviLayer` (Layer 4)
+> ⚠️ PENDING: Live smoke test of EOSDA Render header auth + alias rendering still required — tracked in the existing 6.3 Pending Items entry. Resolved when Phase 6 wave-A live smoke is run end-to-end.
+
+**Implementation notes:**
+- Added `eosdaFetch(path, options): Promise<Response>` sibling to `eosdaRequest` in `apps/api/src/services/eosda-client.ts` for binary streaming. Reuses `assertSafePath` + header auth + sanitised logging.
+- Route enforces XYZ tile bounds (`x < 2^z`, `y < 2^z`) in addition to `z ≤ 22` so an attacker can't enumerate impossible coordinates into our quota.
+- `viewId` allowlist regex: `/^[A-Za-z0-9/_-]+$/`, with separate rejections for `..`, leading `/`, and malformed percent-encoding.
+- Single LEFT-JOIN against `cached_scenes` collapses both "wrong owner" and "scene not cached" to 404 (no enumeration distinction).
+- Streaming strategy: `Buffer.from(await upstream.arrayBuffer())` then `reply.header('Content-Type', 'image/png').send(buf)`. Buffer keeps Fastify's default JSON serializer out of the picture, and the upfront `Content-Type` header makes the contract explicit.
+- Upstream non-2xx is mirrored with an EMPTY body — never forward the upstream HTML/error page (which can echo the request URL when `useQueryAuth` is on).
+- Tests: `apps/api/src/services/eosda-client.test.ts` (+22 tests for `eosdaFetch`), `apps/api/test/eosda.render.routes.test.ts` (22 tests covering auth, validation, ownership, happy path, cache headers, upstream failure mirroring).
+
+**Adversarial review fixes (Phase 6 wave-A, opus-4.6):** A failure draining the upstream body via `arrayBuffer()` (e.g., mid-stream disconnect after a 200 OK) is now caught and surfaced as 502 instead of falling through to a generic 500. New regression test mocks a `Response` whose `arrayBuffer()` rejects and asserts both the 502 and the empty body (no half-decoded PNG forwarded).
+
+### Module 6.4 — `NdviLayer` (Layer 4) ✅ (completed 2026-05-11)
 
 Depends on: 2.3, 2.4 (`isStyleReady`), 6.2, 6.3, 3.1.
 
@@ -864,7 +897,16 @@ Depends on: 2.3, 2.4 (`isStyleReady`), 6.2, 6.3, 3.1.
 
 **Done when:** NDVI heatmap appears for the default scene; the network panel shows authenticated `200` responses to `/api/eosda/render/...` (not `401`/`404`); switching scene/index visibly updates the raster.
 
-### Module 6.5 — Wire DateTimeline interactivity
+**Implementation notes (2026-05-11):**
+- `apps/web/src/components/map/NdviLayer.tsx` — two-effect (lifecycle + opacity-only) component that mounts a `raster` source + `raster` layer driven by `useUiStore` (`selectedViewId`, `selectedIndex`, `ndviOpacity`).
+- Lifecycle effect gates on `isAuthReady === true && selectedViewId != null` so MapLibre never fires tile requests before the Clerk JWT resolves (avoids the 401 storm called out in the rubber-duck review).
+- `beforeId = findFirstSymbolLayerId(map)` (helper now in `apps/web/src/lib/map-style.ts`) inserts NDVI under basemap label symbols. `<NdviLayer>` is mounted *before* `<FieldLayer>` in JSX so `FieldLayer.moveLayer(...)` keeps the field outline on top.
+- Opacity slider updates go through `setPaintProperty` (no source rebuild), keeping per-tick cost flat.
+- `useAutoSelectDefaultScene(field.id)` from Module 6.2 is now mounted in `AnalysisLayout.tsx`, resolving the Module 6.2 pending row.
+
+**Adversarial review fixes (Phase 6 wave-A, gpt-5.5 BLOCKER):** Added a third lifecycle gate — `isViewIdValidForField` — that subscribes to `useEosdaScenes(fieldId)` (TanStack Query dedupes; no extra request) and only allows the source to mount when `selectedViewId` actually exists in the current field's scene list. Without this gate, the field-A → field-B navigation would race the auto-select hook and fire MapLibre tile requests with the new `fieldId` and the old `viewId`, every one of which the API 404s by design (no enumeration). The gate eliminates those avoidable failed-tile loads.
+
+### Module 6.5 — Wire DateTimeline interactivity ✅ (completed 2026-05-11)
 
 Depends on: 5.5, 6.2, 6.4.
 
@@ -879,14 +921,31 @@ Depends on: 5.5, 6.2, 6.4.
 
 **Done when:** Clicking different dates updates the NDVI raster on the map.
 
-### Module 6.6 — `IndexSwitcher` wired
+**Implementation notes (2026-05-11):**
+- Added `showCloudyScenes: boolean` (default `false`) + `setShowCloudyScenes(next | updater)` to `apps/web/src/stores/useUiStore.ts`. Setter accepts a value OR an updater function so both `CloudHiddenToast` ("Show all") and `DateTimeline` (toggle) can flip it without an extra read.
+- `apps/web/src/components/map/overlays/DateTimeline.tsx` rewritten: takes `fieldId: string`; subscribes to `useEosdaScenes(fieldId)`; computes best-per-date in render via `useMemo` (lowest `cloudPercent` with `null` ranked as `+∞`, tie-broken by highest `dataCoveragePercent` with `null` ranked as `-∞`); chips sorted oldest → newest; the currently selected chip is unioned into the visible set even when cloudy and the toggle is off (rubber-duck #8); skeleton loading + error pill with retry + empty-state `<output>`; "Show / Hide cloudy" toggle lives at the right end of the strip with `aria-pressed`. Strip uses `role="toolbar"` + `<button aria-pressed>` chips (matches the existing visual stub and Biome's lint guidance against `role="radio"` on non-input elements).
+- `apps/web/src/components/map/overlays/CloudHiddenToast.tsx` rewritten: takes `fieldId: string`; subscribes to the same `useEosdaScenes` query (TanStack Query dedupes — no extra request); computes `hiddenCloudyCount` from best-per-date in `useMemo`; renders only when `!showCloudyScenes && hiddenCloudyCount > 0`; "Show all" button calls `setShowCloudyScenes(true)`; preserves the `dock-bottom-anchored` class and the `var(--bottom-dock-h) + 11rem` anchor; auto-dismiss removed (now carries an actionable affordance).
+- Resolves Pending Item 5.5 N4: kept `<output>` because the chip is now a live computed-from-server-data result.
+- Prop chain: `AnalysisLayout` already receives `field`; passes `fieldId={field.id}` to `<MapOverlays>` (new prop) which forwards to `<CloudHiddenToast>`. `BottomDock` already receives `field` and now passes `fieldId={field.id}` to `<DateTimeline>`. No Context introduced.
+
+**Adversarial review fixes (Phase 6 wave-A):**
+- sonnet-4.6 BLOCKER — `DateTimeline`'s chip strip now implements the WAI-ARIA APG roving-tabindex toolbar pattern. Exactly one chip is in the tab order at a time (`tabIndex={isFocusable ? 0 : -1}`); `ArrowLeft` / `ArrowRight` / `Home` / `End` move focus between chips (do NOT auto-select; selection still requires Space/Enter); `aria-orientation="horizontal"` is set on the toolbar; the focused chip is brought into view with `scrollIntoView` so it stays visible in the horizontally-scrolling strip. The chevron scroll buttons and the "Show / Hide cloudy" toggle stay outside the toolbar's focus loop with their own tab stops.
+- gpt-5.5 BLOCKER cleanup — `DateTimeline` and `CloudHiddenToast` now both consume `bestPerDate(scenes)` / `isCloudyScene(scene)` from the new shared `apps/web/src/lib/scene-helpers.ts`. The duplicated inline copies are gone and the auto-select hook + the timeline + the hidden-toast count are guaranteed to agree. The force-render-active-chip path is preserved for the case where a user manually selects a cloudy chip with the filter on and then turns it off.
+- opus-4.6 + sonnet-4.6 — `CloudHiddenToast` now resets its `dismissed` state via `useEffect(..., [fieldId])` so a previously-dismissed toast for one field doesn't suppress the toast for the next. Handles both the "component remounted" and "component persisted" navigation modes.
+
+### Module 6.6 — `IndexDropdown` wiring ✅ (completed 2026-05-11)
 
 Depends on: 5.5, 6.4.
 
-1. Replace the stub `IndexSwitcher`'s onChange with a writer to `useUiStore.selectedIndex`.
-2. Confirm `NdviLayer` reacts (already handled in 6.4).
+Verification only — no code changes. Confirmed:
+- `IndexDropdown` (Module 5.6 renamed from `IndexSwitcher`) calls `useUiStore.setSelectedIndex` on selection.
+- `useUiStore.selectedIndex` typed as exactly `'NDVI' | 'EVI' | 'NDWI'` (Module 3.1).
+- `NdviLayer` lifecycle effect includes `selectedIndex` in deps (Module 6.4 line 171) so tile URL `?band=${selectedIndex}` changes on index swap.
+- `OpacityPopover` writes to `ndviOpacity` via separate effect (no source rebuild).
+- `pnpm --filter @viz-crop/web typecheck` ✅ exit 0.
+- `pnpm --filter @viz-crop/web build` ✅ exit 0.
 
-**Done when:** Choosing EVI/NDWI swaps the raster.
+**Done when:** Choosing EVI/NDWI swaps the raster. ✅ Chain validated; no bugs found.
 
 ### Phase 6 exit criteria
 
@@ -896,61 +955,86 @@ Depends on: 5.5, 6.4.
 
 ---
 
-## Phase 7 — Statistics + Sample pane + Chart tab
+## Phase 7 — Statistics + Sample pane + Chart tab ✅ (completed 2026-05-12)
 
 **Goal:** The Sample sidebar pane shows real NDVI statistics (Mean/p10/p90/median + cloud/data-coverage confidence). The Chart tab plots Mean NDVI across cached scenes.
 
 **Phase entry:** Phase 6 complete.
 
-### Module 7.1 — `POST /api/eosda/stats`
+### Module 7.1 — `POST /api/eosda/stats` ✅ (completed 2026-05-12)
 
 Depends on: 1.6, 4.4, 4.1.
 
-1. Add `routes/eosda.stats.ts`:
-   - Body: `{ fieldId, indexes?: ('NDVI'|'EVI'|'NDWI')[], dateRange? }` (default indexes `['NDVI']`, max 3 per [`plan.md` EOSDA gotchas](./plan.md#eosda-specific)).
-   - Auth + ownership check on `fieldId`.
-   - Cache-first: read `cached_ndvi_stats` for `(fieldId, viewId, index)` across the listed `view_ids` (the route may use the cached scenes table to know which `view_ids` to consider).
-   - On miss: create an EOSDA `mt_stats` task with `bm_type` listing the missing indexes for the field geometry + date range, `sensors: ['sentinel2']`, a unique `reference`, and `cloud_masking_level: 1`. Do not replace `geometry` with `cropper_ref`; current EOSDA Statistics docs document `cropper_ref` for Render/imagery contexts, not `mt_stats`.
-   - Poll `GET /api/gdw/api/<task_id>` every ~2s until completion. Use the returned `task_timeout` as the upstream cap, but cap the HTTP request wait to a user-safe maximum (60s for v2); on timeout return `504 { error: 'STATS_TIMEOUT', taskId }` so the frontend can retry instead of hanging.
-   - Normalize the nested response shape: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].average`/`median`/`p10`/`p90`/etc. Map `average` to the app's `mean` column/DTO field before upserting to `cached_ndvi_stats`.
-2. Add `services/stats-cache.ts` to encapsulate the cache reads/writes (mirrors `scene-cache.ts`).
+1. Add `eosdaStatsRequest` and `eosdaStatsResponse` to `packages/shared/src/eosda.ts`. Response envelope mirrors Phase 6: `{ stats: NdviStatsDto[] }`. When the requested range has no scenes the route returns the discriminator `{ stats: [], error: 'NO_SCENES_FOR_RANGE' }` (still HTTP 200; empty is a legitimate steady state — the frontend renders an empty-state message and DOES NOT spend EOSDA quota running `mt_stats` against zero scenes).
+2. Add `apps/api/src/lib/date-range.ts` extracting `resolveDateRange` from `routes/eosda.scenes.ts` so both routes share the same default (last 90 days anchored on resolved `to`). Update the scenes route to import from the new module.
+3. Add `apps/api/src/services/eosda-stats.ts` exporting `runMtStats({ geometry, indexes, dateRange, log, signal })` (mirrors the `eosda-search.ts` pattern from Phase 4). The service owns:
+   - Create-task POST to `/api/gdw/api` with body `{ type: 'mt_stats', params: { bm_type, date_start, date_end, geometry, reference, sensors: ['sentinel2'], cloud_masking_level: 1 } }`. Use `geometry` (NOT `cropper_ref`) per [`docs/review-findings.md` §3.7](./review-findings.md). `reference = vizcrop-${shortHash}-${Date.now()}` where `shortHash` is the first 12 hex chars of `sha256(fieldId|sortedIndexes|date_start|date_end)` — gives a useful grep-key in EOSDA dashboards while the timestamp guarantees uniqueness so we never accidentally rejoin a stale task.
+   - Poll `GET /api/gdw/api/<task_id>` every 2s using `setTimeout` + `await` (NOT `setInterval` — interval can't be cancelled cleanly). User-safe cap = `min(task_timeout, 60)` seconds. On timeout return `STATS_TIMEOUT` so the route can map to HTTP 504.
+   - Normalize the nested EOSDA response: each scene row has `view_id`, `date`, `cloud`, and `indexes[indexName].{ average, median, min, max, p10, p90 }`. Map `average` → `mean` before returning to caller.
+   > ⚠️ DEVIATION: EOSDA `mt_stats` also returns `std`, `variance`, `q1`, `q3` per scene. The `cached_ndvi_stats` schema has no columns for these and v2 has no UI for them — discarded by choice. A future phase that needs them must add columns + a migration.
+4. Add `apps/api/src/services/eosda-stats.test.ts` (mock `eosdaRequest`).
+5. Add `apps/api/src/services/stats-cache.ts` encapsulating cache reads/writes (mirrors `scene-cache.ts`):
+   - `upsertNdviStats(fieldId, rows, opts)` — bulk INSERT … ON CONFLICT (`field_id, view_id, index_name`) DO UPDATE.
+   - `listNdviStats(fieldId, { viewIds?, indexes?, db? })` — SELECT projected to numeric-string-preserving wire shape (shared zod uses `z.coerce.number()`).
+   - `findMissingPairs(fieldId, viewIds, indexes, opts)` — returns `(viewId, index)` tuples NOT in cache.
+6. Add `apps/api/src/services/stats-cache.test.ts` (round-trip against dev PostGIS).
+7. Add `apps/api/src/routes/eosda.stats.ts`. Orchestration:
+   1. Auth + ownership SELECT on `fieldId` (also fetches `geometry` to avoid a second round-trip — Phase 6 pattern).
+   2. Use `listScenesForApi(fieldId, { dateRange, db })` to learn which `view_ids` exist for the requested range. **If zero**, short-circuit and return `{ stats: [], error: 'NO_SCENES_FOR_RANGE' }` (no EOSDA quota burn).
+   3. Use `findMissingPairs` to compute `(viewId, index)` tuples not yet cached.
+   4. **If at least one missing**, fire ONE `mt_stats` task for the FULL geometry + FULL `dateRange` + ALL requested indexes (cheap on quota — one task covers many scenes). Upsert results into `cached_ndvi_stats` and re-read.
+   5. **If all cached**, return immediately.
+   - Re-read cache after upsert so the wire shape matches the shared zod schema.
+   - On EOSDA error degrade to stale cache where possible (Phase 6 pattern); only return 502 when there's no usable cached row at all.
+8. Add `apps/api/test/eosda.stats.routes.test.ts` (mock `runMtStats`; Clerk mock with `x-test-user-id`).
+9. Register the new route plugin in `apps/api/src/server.ts`.
 
-**Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits.
+**Done when:** First call kicks the task and returns once results land; subsequent calls are instant cache hits; empty-range request returns `NO_SCENES_FOR_RANGE` without consuming quota.
 
-### Module 7.2 — `useEosdaStats` hook
+### Module 7.2 — `useEosdaStats` hook ✅ (completed 2026-05-12)
 
 Depends on: 7.1, 0.7.
 
 1. Create `hooks/useEosdaStats.ts`:
-   - `useEosdaStats(fieldId, indexes)` returns the full series for the field.
+   - Signature: `useEosdaStats({ fieldId, indexes?, dateRange? })` returning `UseQueryResult<NdviStatsDto[], Error>`.
+   - Query key (rubber-duck #2): `eosdaKeys.stats(fieldId, sortedIndexes, dateRange)` where `sortedIndexes = [...indexes].sort().join(',')` and `dateRange` contributes `from` + `to`. Add `stats(...)` to the existing `eosdaKeys` factory in `useEosdaScenes.ts`. Without these dimensions in the key, switching NDVI → EVI would reuse the NDVI cache.
+   - Subscribe to `useEosdaScenes(fieldId)` for `enabled: scenesQuery.isSuccess && fieldId.length > 0` (rubber-duck #1 race fix). Stats must never run before scenes cache is fresh for the same `(fieldId, dateRange)`.
    - `staleTime: 60 * 60 * 1000`.
-   - On a 504 `STATS_TIMEOUT`, retry once after 10s and show a non-blocking "Stats are still computing" toast if the retry also times out.
+   - Re-parse the response with `eosdaStatsResponse.parse(data)` (boundary validation pattern from Phase 1).
+   - 504 retry semantics (TanStack Query v5):
+     - `retry: (failureCount, error) => is504(error) && failureCount < 1` — first failure: `failureCount === 0`, retries; second failure: `failureCount === 1`, returns `false`, stops.
+     - `retryDelay: 10_000` — 10s sleep only when `retry` returns `true`. After the second timeout the user sees the final error immediately.
+     - `is504(err) === err instanceof ApiError && err.status === 504`.
+   - Toast on FINAL error: `useQuery` has NO `onError` in v5 (removed). Use a local `useEffect` on `query.isError && !query.isFetching` with a `useRef` guard to fire `toast.error('Stats are still computing — try again in a moment')` exactly once. Module 8.1 may consolidate into a `notifyError` helper later.
    - The Sample pane filters by `selectedViewId` + `selectedIndex` client-side to keep API calls minimal.
 
-**Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes.
+**Done when:** Hook returns an array of `NdviStatsDto` for the test field after the API completes; toggling between NDVI and EVI triggers a new fetch (different cache key) instead of reusing the wrong index's data.
 
-### Module 7.3 — Sample sidebar pane
+### Module 7.3 — Sample sidebar pane ✅ (completed 2026-05-12)
 
 Depends on: 5.3, 7.2.
 
-1. Build `components/shell/sample/SamplePane.tsx`:
-    - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color-coded: red <0.3, yellow 0.3–0.5, green >0.5.
-   - Smaller line: p10 / p90 / median.
-   - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
-   - Mini histogram from the bucketed values returned by EOSDA (skip if not available — render a textual fallback).
-2. Wire `RightSidebar` to render `SamplePane` when `activeSidebarItem === 'sample'`.
+1. Create `apps/web/src/lib/ndvi-colors.ts` exporting `getNdviColor(value: number | null): 'red' | 'yellow' | 'green' | 'gray'` and `NDVI_COLOR_CLASSES` (Tailwind tokens — match the palette already used in `scene-helpers.ts`/legend overlays). Used by both Sample pane and Chart tab so thresholds stay in sync (red <0.3, yellow 0.3–0.5, green >0.5; null/undefined → gray).
+2. Build `components/shell/sample/SamplePane.tsx`:
+    - Big number: Mean NDVI for the selected `(viewId, index)`; this is EOSDA `average` mapped to the app's `mean` field. Color via `getNdviColor`.
+    - Smaller line: p10 / p90 / median.
+    - Cloud + data-coverage line; show "low confidence" tag when cloud > 50% or data coverage low/missing.
+   > ⚠️ DEVIATION: mini-histogram skipped in v2. EOSDA `mt_stats` does not return a histogram and `cached_ndvi_stats` has no column. Re-add when a future phase persists the buckets.
+   - All eight UI states must be handled: no-selected-scene, scenes-loading, stats-computing-first-time, stats-retrying-after-504, final-error-with-retry-button, no-scenes-for-range (`error: 'NO_SCENES_FOR_RANGE'`), no-stats-for-pair, happy.
+3. Wire `RightSidebar` to render `<SamplePane field={field} />` when `activeSidebarItem === 'sample'`. Remove the now-dead `SamplePanePlaceholder` helper.
 
-**Done when:** The pane shows realistic numbers and re-renders on date/index switches.
+**Done when:** The pane shows realistic numbers and re-renders on date/index switches; loading/empty/error states render appropriately.
 
-### Module 7.4 — Chart tab
+### Module 7.4 — Chart tab ✅ (completed 2026-05-12)
 
 Depends on: 5.4, 7.2.
 
-1. Install `recharts`.
-2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = Mean NDVI, dot color matching the same red/yellow/green thresholds. De-emphasize (lower opacity) points with cloud > 50% or low data coverage.
-3. Replace the BottomBar Chart tab placeholder with `NdviChart`.
+1. Install `recharts: ^3.3.0` (verified React 19 compatible — peer deps `react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0`).
+2. Build `components/shell/chart/NdviChart.tsx`: a `LineChart` with x = scene date, y = Mean NDVI, dot color matching the same red/yellow/green thresholds via the shared `getNdviColor` from Module 7.3. De-emphasize (lower opacity, e.g. 0.4) points with cloud > 50% or low data coverage. Use a custom `<Dot />` per-point to drive the per-scene fill color.
+3. Replace the BottomBar Chart tab placeholder body with `<NdviChart fieldId={field.id} />`.
+4. Render the same eight UI states as the Sample pane.
 
-**Done when:** Switching the BottomBar to the Chart tab shows the line for the field.
+**Done when:** Switching the BottomBar to the Chart tab shows the line for the field; dots are color-coded and low-confidence points are visually de-emphasized.
 
 ### Phase 7 exit criteria
 
@@ -1020,15 +1104,16 @@ Depends on: 8.1, 8.2.
 | 1.6 | Allow PATCH `/api/fields/:id` to clear nullable metadata (`farmerName`, `village`, `district`, `state`, `sowingDate`) by sending `null` | Whenever the dashboard adds inline metadata editing (post-Phase 2) | `updateFieldDto` is derived from `createFieldDto.partial()` whose nullable columns only accept strings/dates, not `null`. Module 1.8's rename dialog only sends `{ name }`, so this didn't need to land in 1.8. When dashboard exposes inline metadata editing, extend `updateFieldDto` to accept `null` for those keys and pass it through to Drizzle. |
 | 1.9 | Bootstrap migrations inside the API test setup so the suite works against a fresh DB | Whenever the API gets a CI runner that provisions clean DBs per job | `apps/api/test/fields.routes.test.ts` assumes the dev DB has already been migrated. On a fresh DB the first POST will fail with "relation fields does not exist". For now every developer has the dev DB migrated; revisit when CI provisions disposable DBs (likely add a `beforeAll` that runs `drizzle-kit migrate` programmatically). |
 | 4.3 | Live-test EOSDA Search empty-results response shape (de-risked) | First env with EOSDA creds | Originally a code-correctness risk: `searchScenes` would throw on missing/null `results`, misclassifying genuine no-coverage as failure. Phase 4 review fix made the wrapper lenient (missing/null → `[]`, only present-but-non-array throws), so the runtime risk is closed. Live POST against a polygon outside Sentinel-2 coverage is still a useful contract confirmation but no longer blocks Phase 4 exit. |
-| 6.3 | Live-test EOSDA Render header auth and alias visualization | Phase 6 | Official docs support `x-api-key` globally and aliases (`NDVI`, `EVI`, `NDWI`) in Render. If header auth fails for Render, use `api_key` query fallback with sanitized logging; if aliases render grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
+| 6.3 | Live-test EOSDA Render header auth and alias visualization in browser | Phase 6 manual verification (next session) | Header auth + aliases (`NDVI`/`EVI`/`NDWI`) are unit-tested against the verified spec from `docs/review-findings.md` § 3.6 (mocked `eosdaFetch`). A real round-trip from MapLibre via the proxy to EOSDA still needs a browser session with a Clerk JWT; defer to the first interactive session that loads `/fields/$id`. If header auth fails for Render in practice, fall back to `api_key` query param with sanitized logging; if alias rendering is grayscale despite the unconditional `COLORMAP`/`MIN_MAX`, escalate to EOSDA support. |
 | 5.5 | Smooth out the RightSidebar pane's two stacked motion effects (width animation + slide-in-from-right) | Phase 6 polish | Final UI/UX audit (N1) flagged the brief drift between `motion-safe:transition-[width]` on the outer container and `slide-in-from-right-2 + fade-in-0` on the pane itself. Defer to Phase 6 once real pane content stops being the dominant motion noise. |
 | 5.5 | Lock IndexSwitcher per-button width via `min-w-[3.5rem]` so AnalysisToolbar doesn't jitter when Phase 6+ adds NDMI / MSAVI / SAVI | Phase 6 | Final UI/UX audit (N2). Currently NDVI / EVI / NDWI are all 3–4 chars so the bar is stable; pin widths before adding longer index names. |
 | 5.2 | Surface a visible "Back" label on the TopBar back-arrow at `sm+` so the escape route doesn't depend on tooltip discovery | Phase 6 polish | Final UI/UX audit (N3). The screen has no breadcrumb, so an explicit label improves wayfinding. |
-| 5.5 | Re-evaluate `<output>` semantics for `CloudHiddenToast` once Phase 6 wires the real cloud-coverage signal | Phase 6 | Final UI/UX audit (N4). Use `<output>` only if the chip becomes a computed-result of the active scene's cloud %; otherwise downgrade to `<div aria-live="polite">`. |
+| 7.1 | Persist + resume the EOSDA `mt_stats` `taskId` when the route 504s so the client-side retry can re-poll the original task instead of creating a new one | Future EOSDA-cost-tuning pass (Phase 8.1 or later) | Today, when `runMtStats` exceeds its 60 s deadline the route logs the `taskId` and surfaces `STATS_TIMEOUT`. The `useEosdaStats` 10 s retry then issues a fresh POST, which `runMtStats` runs as a brand-new mt_stats task — doubling EOSDA quota cost on slow tasks. Final phase-7 GPT-5.5 review flagged this. Fix path: stash the `taskId` (e.g. in a small `pending_stats_tasks` table keyed by `referenceId`) on timeout, then on retry have `runMtStats` look it up and resume polling instead of creating a new task. |
 | 5.5 | Provide a tap-revealed lat/lng readout for `< lg` viewports (CoordsBadge currently `hidden lg:inline-flex`) | Phase 6 mobile pass | Final UI/UX audit (N5). On a 12" laptop / iPad the lat/lng is invisible; revisit alongside the broader mobile collision matrix in Phase 6+. |
 | 5.5 | Tighten the gap between `ZoomControls` and `FullscreenButton` to a 4 px hairline so the left rail reads as one piece of chrome | Phase 6 polish | Final UI/UX audit (N6). Currently ~11 px sliver of map between them; could merge into one container or drop FullscreenButton's offset to `top-[calc(50%+44px)]`. |
 | 5.3 | Add a small `sr-only` "Use arrow keys to navigate the sidebar" hint near the rail so keyboard users discover the roving-tabindex pattern | Phase 6 polish | Final UI/UX audit (N7). With 12 rail buttons reachable only by Arrow keys after focusing one, the navigation pattern needs a discoverability aid. |
 | Phase 5 | Standardise "coming soon" copy + disabled-stub mechanism across `TopBar`, `BottomBar`, `RightSidebar`, `SourceSwitcher`, `DownloadButton` (all use Radix Tooltip; copy format `"<Action> coming soon…"`) | When the next stub is added or replaced | Final UI/UX audit (R5). Critical mismatch resolved (TopBar now uses Radix Tooltip + sentence case + ellipsis); remaining copy unification across in-pane "Coming soon…" placeholders can land alongside Phase 6/7 content. |
+| 6.4 | Make `NdviLayer` resilient when the active basemap has no symbol layers | Phase 7+ basemap-toggle work | Adversarial review (sonnet-4.6 #3) — when `findFirstSymbolLayerId(map)` returns `null`, `<NdviLayer>` paints on top of the map instead of below labels, which would put the NDVI raster above basemap labels (and above `FieldLayer`'s `moveLayer(...)`-promoted outline only because the outline is moved AFTER NDVI is added). Not exploitable today: the ArcGIS hybrid basemap always exposes label symbol layers and `FieldLayer.moveLayer` runs unconditionally. Revisit when adding alternate basemaps (e.g. a label-less satellite) or a basemap toggle. |
 
 ---
 
