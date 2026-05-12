@@ -24,8 +24,9 @@
  *
  * The `CloudHiddenToast` sibling surfaces the hidden count and the
  * "Show all" affordance; this component also exposes a small "Show /
- * Hide cloudy" toggle on the right end of the strip so the affordance
- * is available even after the toast has been dismissed.
+ * Hide cloudy" toggle on the right end of the strip. The toggle remains
+ * icon-visible below `sm` so mobile users still have an affordance after
+ * dismissing the toast.
  *
  * ## Accessibility
  *
@@ -64,7 +65,7 @@ import {
 } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useEosdaScenes } from '@/hooks/useEosdaScenes';
-import { bestPerDate, isCloudyScene } from '@/lib/scene-helpers';
+import { bestPerDate, filterVisibleBestScenes, isCloudyScene } from '@/lib/scene-helpers';
 import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/useUiStore';
@@ -86,16 +87,14 @@ type BestForDate = {
   isCloudy: boolean;
 };
 
-function pickBestPerDate(scenes: ReadonlyArray<SceneDto>): ReadonlyArray<BestForDate> {
-  // Centralised in `@/lib/scene-helpers` so the timeline, the
-  // auto-select hook, and the cloud-hidden toast never drift apart.
-  return bestPerDate(scenes).map((scene) => ({
+function toBestForDate(scene: SceneDto): BestForDate {
+  return {
     sceneDate: scene.sceneDate,
     viewId: scene.viewId,
     cloudPercent: scene.cloudPercent,
     dataCoveragePercent: scene.dataCoveragePercent,
     isCloudy: isCloudyScene(scene),
-  }));
+  };
 }
 
 function formatChipDate(sceneDate: string): { day: string; year: string } {
@@ -132,8 +131,8 @@ export function DateTimeline({ fieldId }: DateTimelineProps) {
 
   const scenes = query.data;
 
-  const bestChips = useMemo<ReadonlyArray<BestForDate>>(
-    () => (scenes ? pickBestPerDate(scenes) : []),
+  const bestScenes = useMemo<ReadonlyArray<SceneDto>>(
+    () => (scenes ? bestPerDate(scenes) : []),
     [scenes],
   );
 
@@ -143,14 +142,10 @@ export function DateTimeline({ fieldId }: DateTimelineProps) {
   // but the union still matters if a user manually clicks a cloudy chip
   // while `showCloudyScenes=true` and then toggles the filter off.
   const visibleChips = useMemo<ReadonlyArray<BestForDate>>(() => {
-    if (bestChips.length === 0) return bestChips;
-    const baseline = showCloudyScenes ? bestChips : bestChips.filter((c) => !c.isCloudy);
-    if (selectedViewId === null) return baseline;
-    if (baseline.some((c) => c.viewId === selectedViewId)) return baseline;
-    const selected = bestChips.find((c) => c.viewId === selectedViewId);
-    if (!selected) return baseline;
-    return [...baseline, selected].sort((a, b) => a.sceneDate.localeCompare(b.sceneDate));
-  }, [bestChips, showCloudyScenes, selectedViewId]);
+    return filterVisibleBestScenes(bestScenes, { showCloudyScenes, selectedViewId }).map(
+      toBestForDate,
+    );
+  }, [bestScenes, showCloudyScenes, selectedViewId]);
 
   // --- Roving-tabindex toolbar ---------------------------------------
   // Exactly ONE chip is in the tab order at a time. Default focus
@@ -319,13 +314,13 @@ export function DateTimeline({ fieldId }: DateTimelineProps) {
         aria-label={showCloudyScenes ? 'Hide cloudy scenes' : 'Show cloudy scenes'}
         onClick={() => setShowCloudyScenes((prev) => !prev)}
         className={cn(
-          'ml-1 hidden h-7 shrink-0 items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 text-[10px] text-white/70 transition-colors hover:bg-white/10 hover:text-white sm:inline-flex',
+          'ml-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-[10px] text-white/70 transition-colors hover:bg-white/10 hover:text-white sm:h-7 sm:w-auto sm:gap-1 sm:px-2',
           showCloudyScenes && 'border-white/30 bg-white/15 text-white',
           CHIP_FOCUS,
         )}
       >
         <CloudIcon aria-hidden="true" className="size-3" />
-        <span>{showCloudyScenes ? 'Hide cloudy' : 'Show cloudy'}</span>
+        <span className="hidden sm:inline">{showCloudyScenes ? 'Hide cloudy' : 'Show cloudy'}</span>
       </button>
     </div>
   );

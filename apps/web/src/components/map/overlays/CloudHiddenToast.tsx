@@ -47,24 +47,13 @@
  * dismissal is manual via the close button instead.
  */
 
-import type { SceneDto } from '@viz-crop/shared';
 import { CloudIcon, XIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useEosdaScenes } from '@/hooks/useEosdaScenes';
-import { bestPerDate, isCloudyScene } from '@/lib/scene-helpers';
+import { bestPerDate, countHiddenCloudyBestScenes } from '@/lib/scene-helpers';
 import { CHIP_BASE, CHIP_FOCUS } from '@/lib/tokens';
 import { cn } from '@/lib/utils';
 import { useUiStore } from '@/stores/useUiStore';
-
-function countHiddenCloudy(scenes: ReadonlyArray<SceneDto>): number {
-  // Mirrors the timeline by routing through the same shared helper, so
-  // the count and the visible-chip set never disagree.
-  let hidden = 0;
-  for (const scene of bestPerDate(scenes)) {
-    if (isCloudyScene(scene)) hidden += 1;
-  }
-  return hidden;
-}
 
 export type CloudHiddenToastProps = {
   fieldId: string;
@@ -84,12 +73,13 @@ export function CloudHiddenToast({ fieldId }: CloudHiddenToastProps) {
   }, [fieldId]);
 
   const query = useEosdaScenes(fieldId);
+  const selectedViewId = useUiStore((s) => s.selectedViewId);
   const showCloudyScenes = useUiStore((s) => s.showCloudyScenes);
   const setShowCloudyScenes = useUiStore((s) => s.setShowCloudyScenes);
 
   const hiddenCloudyCount = useMemo(
-    () => (query.data ? countHiddenCloudy(query.data) : 0),
-    [query.data],
+    () => (query.data ? countHiddenCloudyBestScenes(bestPerDate(query.data), selectedViewId) : 0),
+    [query.data, selectedViewId],
   );
 
   if (dismissed) return null;

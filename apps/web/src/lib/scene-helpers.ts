@@ -8,10 +8,8 @@
  *   - `CloudHiddenToast` (how many chips are hidden by the cloud filter).
  *
  * Centralising the logic here guarantees the auto-selected `viewId` is
- * always present in `DateTimeline`'s visible chip strip and in
- * `CloudHiddenToast`'s count — the gpt-5.5 BLOCKER previously caused by
- * the auto-select hook picking from raw scenes while the timeline
- * filtered through best-per-date.
+ * always present in `DateTimeline`'s visible chip strip, and the
+ * toast's hidden count uses the exact same selected-chip exception.
  */
 import type { SceneDto } from '@viz-crop/shared';
 
@@ -60,4 +58,47 @@ export const DEFAULT_PICK_CLOUD_THRESHOLD_PERCENT = 30;
 
 export function isCloudyScene(scene: SceneDto): boolean {
   return scene.cloudPercent != null && scene.cloudPercent > CLOUDY_THRESHOLD_PERCENT;
+}
+
+export type CloudFilteredBestScenesOptions = {
+  showCloudyScenes: boolean;
+  selectedViewId: string | null;
+};
+
+/**
+ * Apply the cloudy-scene visibility rule to an already best-per-date
+ * scene list. The active scene is always retained so the map never
+ * displays a viewId that has no visible timeline chip.
+ */
+export function filterVisibleBestScenes(
+  bestScenes: ReadonlyArray<SceneDto>,
+  { showCloudyScenes, selectedViewId }: CloudFilteredBestScenesOptions,
+): SceneDto[] {
+  if (bestScenes.length === 0) return [];
+  const baseline = showCloudyScenes
+    ? [...bestScenes]
+    : bestScenes.filter((scene) => !isCloudyScene(scene));
+  if (selectedViewId === null) return baseline;
+  if (baseline.some((scene) => scene.viewId === selectedViewId)) return baseline;
+  const selected = bestScenes.find((scene) => scene.viewId === selectedViewId);
+  if (!selected) return baseline;
+  return [...baseline, selected].sort((a, b) => a.sceneDate.localeCompare(b.sceneDate));
+}
+
+export function countHiddenCloudyBestScenes(
+  bestScenes: ReadonlyArray<SceneDto>,
+  selectedViewId: string | null,
+): number {
+  const visibleViewIds = new Set(
+    filterVisibleBestScenes(bestScenes, {
+      showCloudyScenes: false,
+      selectedViewId,
+    }).map((scene) => scene.viewId),
+  );
+
+  let hidden = 0;
+  for (const scene of bestScenes) {
+    if (isCloudyScene(scene) && !visibleViewIds.has(scene.viewId)) hidden += 1;
+  }
+  return hidden;
 }
