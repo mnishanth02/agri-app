@@ -170,9 +170,12 @@ function kickLazyCropperHeal(db: Db, fieldId: string, log: FastifyRequest['log']
       let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<'timeout'>((resolve) => {
         timeoutTimer = setTimeout(() => resolve('timeout'), LAZY_CROPPER_HEAL_TIMEOUT_MS);
-        timeoutTimer.unref?.();
+        timeoutTimer.unref();
       });
       try {
+        // A timeout only releases the in-process dedupe gate; the original
+        // cropper request may still complete and persist the ref in the
+        // background, which is safe and avoids wasting successful EOSDA work.
         const outcome = await Promise.race([
           cropperPromise.then(() => 'settled' as const),
           timeout,
